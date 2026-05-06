@@ -19,9 +19,11 @@ echo "--- INSTALANDO MODULOS ---"
 MODULOS="ssh_manager hwid_manager token_manager remover bloquear menu alterarlimite alterarsenha mudardata infousers sshmonitor detalhes userbackup creardemo demo_cleaner bloquear_silencioso remover_silencioso editar_hwid expcleaner sshplus_auto_backup conexao badvpn banner limit_ssh monitor"
 for modulo in $MODULOS; do
     echo "    $modulo..."
-    wget -q "$REPO/Modulos/$modulo" -O /bin/$modulo 2>/dev/null
-    sed -i '1s/^\xEF\xBB\xBF//' /bin/$modulo 2>/dev/null
+    wget -q "$REPO/Modulos/$modulo" -O /tmp/$modulo 2>/dev/null
+    sed -i '1s/^\xEF\xBB\xBF//' /tmp/$modulo 2>/dev/null
+    bash /tmp/$modulo 2>/dev/null
     chmod +x /bin/$modulo 2>/dev/null
+    rm -f /tmp/$modulo
 done
 echo "/bin/menu" > /bin/h && chmod +x /bin/h
 (crontab -l 2>/dev/null | grep -v "demo_cleaner"; echo "*/5 * * * * /bin/demo_cleaner >> /tmp/demo_cleaner.log 2>&1") | crontab - 2>/dev/null
