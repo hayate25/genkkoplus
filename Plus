@@ -1,88 +1,40 @@
-# Clonar el repo
-cd /tmp
-rm -rf genkkoplus
-git clone https://github.com/hayate25/genkkoplus.git
-cd genkkoplus
-
-# Sobrescribir el archivo Plus
-cat > Plus << 'EOF'
+cat > /root/Plus << 'EOF'
 #!/bin/bash
 clear
-
-[[ "$(whoami)" != "root" ]] && {
-    echo "ERROR: Debes ejecutar como root"
-    exit 0
-}
-
+[[ "$(whoami)" != "root" ]] && { echo "ERROR: Debes ejecutar como root"; exit 0; }
 cd $HOME
-
 echo "=============================================="
-echo ""
 echo "           SSHPLUS - GENKKO EDITION"
-echo ""
 echo "=============================================="
-echo ""
-echo "  Soporte para SSH, HWID y TOKEN"
-echo ""
-echo "=============================================="
-echo ""
-echo -n "Desea continuar con la instalacion? [s/n]: "; read x
+echo -n "Continuar? [s/n]: "; read x
 [[ $x = @(n|N) ]] && exit
-
 REPO="https://raw.githubusercontent.com/hayate25/genkkoplus/main"
-
-echo ""
-echo "--- ACTUALIZANDO SISTEMA ---"
+echo "--- ACTUALIZANDO ---"
 apt-get update -y > /dev/null 2>&1
-
-echo ""
-echo "--- INSTALANDO PAQUETES ---"
 apt-get install -y bc python3 htop git screen nano unzip lsof net-tools dos2unix nload jq curl figlet python3-pip at perl > /dev/null 2>&1
-
-echo ""
-echo "--- CREANDO DIRECTORIOS ---"
 mkdir -p /etc/SSHPlus/senha /etc/SSHPlus/backups
 touch /etc/SSHPlus/locked_users.db /etc/SSHPlus/hwid.db /etc/SSHPlus/token.db /etc/SSHPlus/temp_users.db
 echo "SSH" > /etc/SSHPlus/modo_actual.cfg
 echo "0" > /etc/SSHPlus/Exp
-
-echo ""
 echo "--- INSTALANDO MODULOS ---"
-
 MODULOS=(ssh_manager hwid_manager token_manager remover bloquear menu alterarlimite alterarsenha mudardata infousers sshmonitor detalhes userbackup creardemo demo_cleaner bloquear_silencioso remover_silencioso editar_hwid expcleaner sshplus_auto_backup)
-
 for modulo in "${MODULOS[@]}"; do
     echo "    $modulo..."
     bash <(curl -s "$REPO/Modulos/$modulo") 2>/dev/null
     chmod +x /bin/$modulo 2>/dev/null
 done
-
 echo "/bin/menu" > /bin/h && chmod +x /bin/h
-
-echo "*/5 * * * * /bin/demo_cleaner >> /tmp/demo_cleaner.log 2>&1" | crontab - 2>/dev/null
-
+(crontab -l 2>/dev/null | grep -v "demo_cleaner"; echo "*/5 * * * * /bin/demo_cleaner >> /tmp/demo_cleaner.log 2>&1") | crontab - 2>/dev/null
 if [ -f "$HOME/usuarios.db" ]; then
-    echo ""
-    echo "  Base de datos existente. [1] Mantener [2] Nueva: "
-    read optiondb
+    echo -n "BD existente. [1] Mantener [2] Nueva: "; read optiondb
     [ "$optiondb" = "2" ] && awk -F : '$3 >= 500 { print $1 " 1" }' /etc/passwd | grep -v '^nobody' > $HOME/usuarios.db
 else
     awk -F : '$3 >= 500 { print $1 " 1" }' /etc/passwd | grep -v '^nobody' > $HOME/usuarios.db
 fi
-
 cat /dev/null > ~/.bash_history && history -c
-
 clear
 echo "=============================================="
-echo "  INSTALACION COMPLETADA"
-echo "  Comando: menu"
+echo "  INSTALACION COMPLETADA - Comando: menu"
 echo "=============================================="
 exit 0
 EOF
-
-# Subir a GitHub
-git add Plus
-git commit -m "Plus sin colores - instalador oficial"
-git push origin main
-
-echo "✅ Plus actualizado en GitHub"
