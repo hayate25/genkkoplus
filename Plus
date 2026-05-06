@@ -1,4 +1,3 @@
-cat > /root/Plus << 'EOF'
 #!/bin/bash
 clear
 [[ "$(whoami)" != "root" ]] && { echo "ERROR: Debes ejecutar como root"; exit 0; }
@@ -18,11 +17,7 @@ echo "SSH" > /etc/SSHPlus/modo_actual.cfg
 echo "0" > /etc/SSHPlus/Exp
 echo "--- INSTALANDO MODULOS ---"
 MODULOS=(ssh_manager hwid_manager token_manager remover bloquear menu alterarlimite alterarsenha mudardata infousers sshmonitor detalhes userbackup creardemo demo_cleaner bloquear_silencioso remover_silencioso editar_hwid expcleaner sshplus_auto_backup)
-for modulo in "${MODULOS[@]}"; do
-    echo "    $modulo..."
-    bash <(curl -s "$REPO/Modulos/$modulo") 2>/dev/null
-    chmod +x /bin/$modulo 2>/dev/null
-done
+for modulo in "${MODULOS[@]}"; do echo "    $modulo..."; bash <(curl -s "$REPO/Modulos/$modulo") 2>/dev/null; chmod +x /bin/$modulo 2>/dev/null; done
 echo "/bin/menu" > /bin/h && chmod +x /bin/h
 (crontab -l 2>/dev/null | grep -v "demo_cleaner"; echo "*/5 * * * * /bin/demo_cleaner >> /tmp/demo_cleaner.log 2>&1") | crontab - 2>/dev/null
 if [ -f "$HOME/usuarios.db" ]; then
@@ -33,8 +28,5 @@ else
 fi
 cat /dev/null > ~/.bash_history && history -c
 clear
-echo "=============================================="
-echo "  INSTALACION COMPLETADA - Comando: menu"
-echo "=============================================="
+echo "INSTALACION COMPLETADA - Comando: menu"
 exit 0
-EOF
