@@ -1,0 +1,34 @@
+cat > /bin/bloquear_silencioso << 'EOF'
+#!/bin/bash
+# bloquear_silencioso - Bloquea y desconecta un usuario sin preguntar
+
+user="$1"
+[ -z "$user" ] && exit 1
+
+LOCKED_DB="/etc/SSHPlus/locked_users.db"
+touch "$LOCKED_DB"
+
+# Bloquear (agregar a lista de bloqueados)
+if ! grep -q "^$user$" "$LOCKED_DB"; then
+    echo "$user" >> "$LOCKED_DB"
+fi
+
+# Desconectar (mismo sistema que remover)
+pids=$(grep "Password auth succeeded for '$user'" /var/log/auth.log 2>/dev/null | grep -oP 'dropbear\[\K[0-9]+' | sort -u)
+for pid in $pids; do
+    kill -9 "$pid" 2>/dev/null
+done
+
+pkill -9 -u "$user" 2>/dev/null
+skill -KILL -u "$user" 2>/dev/null
+sleep 1
+
+# Segunda pasada
+pkill -9 -u "$user" 2>/dev/null
+skill -KILL -u "$user" 2>/dev/null
+
+exit 0
+EOF
+
+chmod +x /bin/bloquear_silencioso
+echo "✅ bloquear_silencioso instalado"

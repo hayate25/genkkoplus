@@ -1,0 +1,135 @@
+cat > /bin/sshmonitor << 'EOF'
+#!/bin/bash
+# sshmonitor - Monitor de usuarios online simplificado
+# Version sin colores - Compatible con SSHPlus
+
+clear
+
+# Función para formatear bytes
+fmt_bytes() {
+    local b=$1
+    if [ $b -ge 1073741824 ]; then
+        echo "$(awk "BEGIN {printf \"%.1fG\", $b/1073741824}")"
+    elif [ $b -ge 1048576 ]; then
+        echo "$(awk "BEGIN {printf \"%.1fM\", $b/1048576}")"
+    elif [ $b -ge 1024 ]; then
+        echo "$(awk "BEGIN {printf \"%.0fK\", $b/1024}")"
+    else
+        echo "${b}B"
+    fi
+}
+
+# Función para formatear segundos a HH:MM:SS
+fmt_time() {
+    local s=$1
+    printf "%02d:%02d:%02d" $((s/3600)) $(((s%3600)/60)) $((s%60))
+}
+
+# Bucle principal
+while true; do
+    clear
+    
+    echo "=============================================="
+    echo "         MONITOR DE USUARIOS ONLINE"
+    echo "=============================================="
+    echo ""
+    
+    # Contar total usuarios registrados
+    total_usuarios=$(wc -l < /root/usuarios.db 2>/dev/null || echo 0)
+    
+    # Detectar conexiones activas
+    online=0
+    
+    # 1. Conexiones Dropbear
+    if [ -f /var/log/auth.log ]; then
+        dropbear_users=$(grep "Password auth succeeded" /var/log/auth.log 2>/dev/null | awk '{print $10}' | sort -u | tr -d "'")
+    else
+        dropbear_users=""
+    fi
+    
+    # 2. Conexiones SSH
+    ssh_users=$(ps aux 2>/dev/null | grep -v grep | grep "sshd.*@pts" | awk '{print $7}' | sort -u)
+    
+    # 3. Conexiones OpenVPN (si existe)
+    openvpn_users=""
+    if [ -f /etc/openvpn/openvpn-status.log ]; then
+        openvpn_users=$(grep -E "^[A-Za-z0-9]" /etc/openvpn/openvpn-status.log 2>/dev/null | cut -d',' -f1 | sort -u)
+    fi
+    
+    # Combinar todos los usuarios online
+    all_online=$(echo -e "$dropbear_users\n$ssh_users\n$openvpn_users" | sort -u | grep -v "^$" | grep -v "nobody")
+    online=$(echo "$all_online" | grep -c .)
+    
+    echo "  Total usuarios registrados: $total_usuarios"
+    echo "  Usuarios online: $online"
+    echo ""
+    echo "=============================================="
+    
+    if [ $online -gt 0 ]; then
+        printf "%-15s %-12s %-15s %-12s %-10s\n" "USUARIO" "CONEXIONES" "DESCARGA" "SUBIDA" "TIEMPO"
+        echo "----------------------------------------------------------------------------"
+        
+        while IFS= read -r user; do
+            [ -z "$user" ] && continue
+            
+            # Contar conexiones del usuario
+            conn_count=0
+            down_total=0
+            up_total=0
+            time_total=0
+            
+            # Buscar procesos del usuario
+            while IFS= read -r pid; do
+                [ -z "$pid" ] && continue
+                conn_count=$((conn_count + 1))
+                
+                # Leer I/O del proceso
+                if [ -r "/proc/$pid/io" ]; then
+                    rchar=$(grep "rchar:" /proc/$pid/io 2>/dev/null | awk '{print $2}')
+                    wchar=$(grep "wchar:" /proc/$pid/io 2>/dev/null | awk '{print $2}')
+                    [ -n "$rchar" ] && down_total=$((down_total + rchar))
+                    [ -n "$wchar" ] && up_total=$((up_total + wchar))
+                fi
+                
+                # Tiempo del proceso
+                etimes=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ')
+                [ -n "$etimes" ] && time_total=$((time_total + etimes))
+            done < <(ps -u "$user" -o pid= 2>/dev/null)
+            
+            printf "%-15s %-12s %-15s %-12s %-10s\n" \
+                "$user" \
+                "$conn_count" \
+                "$(fmt_bytes $down_total)" \
+                "$(fmt_bytes $up_total)" \
+                "$(fmt_time $time_total)"
+                
+        done <<< "$all_online"
+        
+        echo "----------------------------------------------------------------------------"
+        echo ""
+        echo "  DESCARGA = Datos recibidos por el usuario"
+        echo "  SUBIDA   = Datos enviados por el usuario"
+    else
+        echo "  No hay usuarios conectados actualmente"
+    fi
+    
+    echo ""
+    echo "=============================================="
+    echo "  [Enter] Actualizar  [Q] Salir"
+    echo "=============================================="
+    
+    # Leer tecla con timeout de 10 segundos
+    read -t 10 -n 1 key 2>/dev/null
+    
+    case "$key" in
+        q|Q) 
+            echo ""
+            exit 0 
+            ;;
+        *) continue ;;
+    esac
+done
+EOF
+
+chmod +x /bin/sshmonitor
+echo "✅ sshmonitor instalado correctamente"

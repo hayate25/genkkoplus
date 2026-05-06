@@ -1,0 +1,237 @@
+cat > /bin/alterarsenha << 'EOF'
+#!/bin/bash
+# alterarsenha - Módulo para cambiar contraseña de usuario
+# Compatible con sistema SSHPlus (IDs dinámicos)
+# Versión sin colores para compatibilidad con bots
+
+clear
+echo "=============================================="
+echo "           ALTERAR SENHA DE USUARIO"
+echo "=============================================="
+echo ""
+
+database="/root/usuarios.db"
+
+if [ ! -f "$database" ]; then
+    echo "ERROR: Archivo $database NO encontrado"
+    echo ""
+    exit 1
+fi
+
+# Función para obtener usuario por ID
+get_user_by_id() {
+    local id="$1"
+    local current=1
+    while IFS=' ' read -r user limite; do
+        if [[ $current -eq $id ]]; then
+            echo "$user"
+            return
+        fi
+        current=$((current+1))
+    done < "$database"
+}
+
+# Función para desconectar todas las sesiones de un usuario
+disconnect_user() {
+    local user="$1"
+    local pids=""
+    local disconnected=0
+    
+    # Buscar PIDs en logs de autenticación (Dropbear)
+    if [ -f /var/log/auth.log ]; then
+        pids=$(grep "Password auth succeeded for '$user'" /var/log/auth.log | grep -oP 'dropbear\[\K[0-9]+' | sort -u)
+    fi
+    
+    # Si no encontró en auth.log, buscar en procesos del sistema
+    if [ -z "$pids" ]; then
+        # Buscar procesos de dropbear asociados al usuario
+        pids=$(ps aux | grep -v grep | grep "dropbear" | grep "$user" | awk '{print $2}')
+    fi
+    
+    # Matar cada PID encontrado
+    if [ -n "$pids" ]; then
+        for pid in $pids; do
+            if kill -9 "$pid" 2>/dev/null; then
+                disconnected=$((disconnected + 1))
+            fi
+        done
+    fi
+    
+    # También matar cualquier proceso del usuario (bash, etc.)
+    pkill -9 -u "$user" 2>/dev/null
+    
+    echo "$disconnected"
+}
+
+# Función para obtener límite por ID (por si se necesita)
+get_limit_by_id() {
+    local id="$1"
+    local current=1
+    while IFS=' ' read -r user limite; do
+        if [[ $current -eq $id ]]; then
+            echo "$limite"
+            return
+        fi
+        current=$((current+1))
+    done < "$database"
+}
+
+# Listar usuarios con IDs y sus contraseñas
+echo "LISTA DE USUARIOS Y SUS SENHAS:"
+echo "----------------------------------------"
+echo ""
+
+id=0
+while IFS=' ' read -r user limit; do
+    [[ -z "$user" ]] && continue
+    id=$((id + 1))
+    
+    # Obtener contraseña si existe
+    if [[ -e "/etc/SSHPlus/senha/$user" ]]; then
+        senha="$(cat /etc/SSHPlus/senha/$user)"
+    else
+        senha="Null"
+    fi
+    
+    # Formato: [ID] - Usuario (Senha: X)
+    printf "[%02d] - %-25s Senha: %s\n" "$id" "$user" "$senha"
+done < "$database"
+
+# Si no hay usuarios
+if [[ $id -eq 0 ]]; then
+    echo "No hay usuarios registrados en el sistema."
+    exit 1
+fi
+
+echo ""
+echo "----------------------------------------"
+echo "Total de usuarios: $id"
+echo ""
+
+# Seleccionar usuario por ID
+echo -n "Seleccione un usuario por ID [1-$id]: "
+read option
+
+# Validar entrada
+if [[ -z $option ]]; then
+    echo ""
+    echo "ERROR: Debe seleccionar un ID"
+    echo ""
+    exit 1
+fi
+
+# Validar que sea número
+if ! [[ "$option" =~ ^[0-9]+$ ]]; then
+    echo ""
+    echo "ERROR: Debe ingresar un número válido"
+    echo ""
+    exit 1
+fi
+
+# Validar rango
+if [[ $option -lt 1 ]] || [[ $option -gt $id ]]; then
+    echo ""
+    echo "ERROR: ID fuera de rango [1-$id]"
+    echo ""
+    exit 1
+fi
+
+# Obtener usuario por ID
+usuario=$(get_user_by_id "$option")
+
+if [[ -z $usuario ]]; then
+    echo ""
+    echo "ERROR: Usuario no encontrado"
+    echo ""
+    exit 1
+fi
+
+# Verificar que el usuario existe en el sistema
+if ! grep -q "^$usuario:" /etc/passwd; then
+    echo ""
+    echo "ERROR: El usuario $usuario no existe en el sistema"
+    echo ""
+    exit 1
+fi
+
+echo ""
+echo "Usuario seleccionado: $usuario"
+echo ""
+
+# Verificar si hay sesiones activas ANTES de pedir la contraseña
+# Buscar en logs de auth y procesos
+sessions_active=0
+if [ -f /var/log/auth.log ]; then
+    sessions_active=$(grep "Password auth succeeded for '$usuario'" /var/log/auth.log 2>/dev/null | wc -l)
+fi
+
+# También verificar con who
+who_count=$(who | grep -c "^$usuario " 2>/dev/null)
+
+if [[ $sessions_active -gt 0 ]] || [[ $who_count -gt 0 ]]; then
+    echo "ATENCION: El usuario $usuario tiene sesiones activas"
+    echo "Conexiones detectadas: $sessions_active (logs) / $who_count (who)"
+    echo "Las sesiones serán desconectadas al cambiar la contraseña."
+    echo ""
+fi
+
+# Solicitar nueva contraseña
+echo -n "Nueva senha para el usuario $usuario: "
+read password
+
+# Validar contraseña
+sizepass=$(echo ${#password})
+if [[ $sizepass -lt 4 ]]; then
+    echo ""
+    echo "ERROR: Senha vacia o invalida! Use minimo 4 caracteres"
+    echo ""
+    exit 1
+fi
+
+# Cambiar contraseña primero
+echo "$usuario:$password" | chpasswd 2>/dev/null
+
+if [ $? -ne 0 ]; then
+    echo ""
+    echo "ERROR: No se pudo cambiar la contraseña del usuario"
+    echo ""
+    exit 1
+fi
+
+# Guardar contraseña en archivo
+mkdir -p /etc/SSHPlus/senha
+echo "$password" > "/etc/SSHPlus/senha/$usuario"
+
+# Desconectar todas las sesiones del usuario
+echo ""
+echo "Verificando conexiones activas..."
+disconnected=$(disconnect_user "$usuario")
+
+# También forzar desconexión con pkill para asegurar
+pkill -9 -u "$usuario" 2>/dev/null
+sleep 1
+
+# Verificar si quedaron procesos
+remaining=$(ps aux | grep -v grep | grep "$usuario" | wc -l)
+
+echo ""
+echo "=============================================="
+echo "  SENHA ALTERADA CORRECTAMENTE"
+echo "  Usuario: $usuario"
+echo "  Nueva senha: $password"
+if [[ $disconnected -gt 0 ]]; then
+    echo "  Conexiones desconectadas: $disconnected"
+fi
+if [[ $remaining -gt 0 ]]; then
+    echo "  ADVERTENCIA: Aún quedan $remaining procesos activos"
+    echo "  Se recomienda reiniciar el servicio SSH"
+fi
+echo "=============================================="
+echo ""
+
+sleep 3
+exit 0
+EOF
+
+chmod +x /bin/alterarsenha
+echo "✅ alterarsenha actualizado correctamente"

@@ -1,0 +1,177 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                                                                            ║
+║              ✅ SISTEMA DE USUARIOS CON HWID - COMPLETADO                 ║
+║                                                                            ║
+║                         🎯 COMIENZA AQUÍ                                  ║
+║                                                                            ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  📋 ARCHIVOS NUEVOS (6 archivos agregados)                             ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+  ✅ user_manager.py          → Motor de gestión de usuarios
+  ✅ user_cli.py              → Comando para crear/editar usuarios
+  ✅ test_user_system.py      → Script de prueba automática
+  ✅ README.md                → Documentación técnica
+  ✅ QUICKSTART.py            → Guía rápida interactiva
+  ✅ ejemplos_conexion.sh     → Ejemplos en múltiples lenguajes
+
+  🔄 wsproxy.py               → MODIFICADO (integrado con usuarios)
+  ⚪ open.py                  → Sin cambios (backward compatible)
+  ⚪ proxy.py                 → Sin cambios (backward compatible)
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  🚀 PRIMEROS PASOS (5 minutos)                                          ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+  PASO 1: Crear tu primer usuario
+  ────────────────────────────────
+  $ python3 user_cli.py create admin micontraseña --hwid "MI-HWID-001"
+
+  Resultado esperado:
+    [+] Usuario 'admin' creado exitosamente
+
+
+  PASO 2: Verificar que se creó
+  ─────────────────────────────
+  $ python3 user_cli.py list
+
+  Deberías ver:
+    ✓ admin               REGISTRADO           0               Nunca
+
+
+  PASO 3: Iniciar el proxy
+  ────────────────────────
+  $ python3 wsproxy.py -b 0.0.0.0 -p 80
+
+  El proxy está escuchando en puerto 80
+
+
+  PASO 4: Conectarte desde un cliente
+  ────────────────────────────────────
+  $ curl -H "X-User: admin" \
+         -H "X-Pass: micontraseña" \
+         -H "X-HWID: MI-HWID-001" \
+         -H "X-Real-Host: 127.0.0.1:22" \
+         http://localhost:80
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  📚 DOCUMENTACIÓN                                                       ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+  📖 Para guía interactiva:
+     $ python3 QUICKSTART.py
+
+  📖 Para documentación técnica completa:
+     $ cat README.md
+
+  📖 Para ejemplos en múltiples lenguajes:
+     $ cat ejemplos_conexion.sh
+
+  📖 Para resumen ejecutivo:
+     $ cat SISTEMA_RESUMEN.txt
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  🛠️ COMANDOS ÚTILES                                                     ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+  👤 GESTIÓN DE USUARIOS
+  ─────────────────────
+
+    Crear usuario sin HWID:
+    $ python3 user_cli.py create usuario1 password123
+
+    Crear usuario con HWID:
+    $ python3 user_cli.py create usuario2 pass456 --hwid "ABC123"
+
+    Listar todos:
+    $ python3 user_cli.py list
+
+    Ver detalles de uno:
+    $ python3 user_cli.py info usuario1
+
+    Agregar HWID después:
+    $ python3 user_cli.py register-hwid usuario1 "ABC123"
+
+    Desactivar usuario:
+    $ python3 user_cli.py toggle deactivate usuario1
+
+    Eliminar usuario:
+    $ python3 user_cli.py delete usuario1 -f
+
+
+  🖥️ EJECUTAR PROXY
+  ─────────────────
+
+    Puerto por defecto (80):
+    $ python3 wsproxy.py
+
+    Puerto personalizado:
+    $ python3 wsproxy.py -p 8080
+
+    IP y puerto específicos:
+    $ python3 wsproxy.py -b 192.168.1.100 -p 80
+
+
+  🧪 PRUEBAS
+  ──────────
+
+    Ejecutar suite de pruebas:
+    $ python3 test_user_system.py
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  🔐 CÓMO FUNCIONA LA AUTENTICACIÓN                                      ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+  El cliente envía 4 headers HTTP obligatorios:
+
+    X-User: <nombre_usuario>        ← Nombre de usuario
+    X-Pass: <contraseña>            ← Contraseña
+    X-HWID: <hardware_id>           ← ID del hardware (si el usuario lo requiere)
+    X-Real-Host: <destino:puerto>   ← Donde conectarse
+
+  El proxy valida:
+    1. ¿El usuario existe?
+    2. ¿La contraseña es correcta?
+    3. ¿Tiene HWID registrado? Si sí, ¿coincide?
+    4. ¿El usuario está activo?
+
+  Si TODO es correcto → Conecta al destino (X-Real-Host)
+  Si ALGO falla → Devuelve 401 Unauthorized
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  🎯 RESUMEN FINAL                                                       ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+  ✅ Sistema de gestión de usuarios completamente integrado
+  ✅ Validación por HWID (Hardware ID)
+  ✅ Preservación de funcionalidad existente
+  ✅ CLI completa para gestión
+  ✅ Thread-safe para concurrencia
+  ✅ Logging detallado
+  ✅ Backward compatible
+  ✅ Documentación completa
+
+  El sistema está listo para PRODUCCIÓN.
+
+  COMIENZA AHORA:
+
+    1. Crea un usuario:
+       python3 user_cli.py create admin pass123 --hwid "MI-ID"
+
+    2. Inicia el proxy:
+       python3 wsproxy.py
+
+    3. Conectate desde cliente:
+       curl -H "X-User: admin" -H "X-Pass: pass123" \
+            -H "X-HWID: MI-ID" -H "X-Real-Host: 127.0.0.1:22" \
+            http://proxy:80
+
+═════════════════════════════════════════════════════════════════════════════

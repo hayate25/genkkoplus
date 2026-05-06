@@ -1,0 +1,228 @@
+cat > /bin/creardemo << 'EOF'
+#!/bin/bash
+# creardemo - Creador de usuarios demo/temporales
+# Compatible con SSH, HWID y TOKEN
+# Version sin colores
+
+clear
+
+MODO_ACTUAL="/etc/SSHPlus/modo_actual.cfg"
+TEMP_DB="/etc/SSHPlus/temp_users.db"
+
+# Crear directorio y archivo si no existen
+mkdir -p /etc/SSHPlus
+touch "$TEMP_DB"
+
+# Detectar modo
+if [ -f "$MODO_ACTUAL" ]; then
+    modo=$(cat "$MODO_ACTUAL")
+else
+    modo="SSH"
+fi
+
+echo "=============================================="
+echo "     CREAR USUARIO DEMO - MODO: $modo"
+echo "=============================================="
+echo ""
+
+# Mostrar demos activos
+echo "DEMOS ACTIVOS:"
+echo "----------------------------------------"
+if [ -s "$TEMP_DB" ]; then
+    printf "  %-4s %-15s %-6s %-17s %s\n" "ID" "USUARIO" "MODO" "EXPIRA" "RESTANTE"
+    echo "  -------------------------------------------------"
+    linea_id=1
+    while IFS='|' read -r temp_user temp_modo temp_exp; do
+        [[ -z "$temp_user" ]] && continue
+        ahora=$(date +%s)
+        exp_seg=$(date -d "$temp_exp" +%s 2>/dev/null)
+        if [ -n "$exp_seg" ]; then
+            restante=$(( (exp_seg - ahora) / 60 ))
+            if [ $restante -lt 0 ]; then
+                restante="EXPIRADO"
+            else
+                restante="${restante} min"
+            fi
+        else
+            restante="N/A"
+        fi
+        printf "  %-4s %-15s %-6s %-17s %s\n" "$linea_id" "$temp_user" "$temp_modo" "$temp_exp" "$restante"
+        linea_id=$((linea_id + 1))
+    done < "$TEMP_DB"
+else
+    echo "  No hay demos activos"
+fi
+echo "=============================================="
+echo ""
+
+# Preguntar tiempo de duracion
+echo "El usuario se ELIMINARA automaticamente al cumplir el tiempo."
+echo ""
+echo -n "Duracion en MINUTOS (0 = cancelar): "
+read duracion
+
+# Validar entrada
+if [[ -z "$duracion" ]] || [[ "$duracion" == "0" ]]; then
+    echo "Cancelado."
+    exit 0
+fi
+
+if ! [[ "$duracion" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: Ingrese un numero valido de minutos"
+    exit 1
+fi
+
+if [ "$duracion" -lt 1 ]; then
+    echo "ERROR: Minimo 1 minuto"
+    exit 1
+fi
+
+# Calcular fecha de expiracion
+fecha_exp_dia=$(date "+%Y-%m-%d" -d "+$duracion minutes")
+fecha_exp_hora=$(date "+%Y-%m-%d %H:%M:%S" -d "+$duracion minutes")
+
+echo ""
+echo "La demo expirara: $fecha_exp_hora"
+echo ""
+
+case "$modo" in
+    SSH)
+        echo "=== DATOS DEL USUARIO SSH DEMO ==="
+        echo ""
+        
+        echo -n "Nombre de usuario: "
+        read nombre
+        [[ -z "$nombre" ]] && echo "ERROR: Nombre vacio" && exit 1
+        
+        # Verificar si existe
+        if grep -q "^$nombre " /root/usuarios.db 2>/dev/null; then
+            echo "ERROR: El usuario $nombre ya existe"
+            exit 1
+        fi
+        if grep -q "^$nombre:" /etc/passwd 2>/dev/null; then
+            echo "ERROR: El usuario $nombre ya existe en el sistema"
+            exit 1
+        fi
+        
+        echo -n "Contraseña: "
+        read pass
+        [[ -z "$pass" ]] && echo "ERROR: Contraseña vacia" && exit 1
+        
+        echo -n "Limite de conexiones [1-999]: "
+        read limite
+        [[ -z "$limite" ]] && limite="1"
+        [[ ! "$limite" =~ ^[0-9]+$ ]] && limite="1"
+        [[ "$limite" -lt 1 ]] && limite="1"
+        
+        # Crear usuario con fecha de expiracion
+        useradd -e "$fecha_exp_dia" -M -s /bin/false "$nombre" 2>/dev/null
+        if [ $? -ne 0 ]; then
+            echo "ERROR: No se pudo crear el usuario en el sistema"
+            exit 1
+        fi
+        
+        echo "$nombre:$pass" | chpasswd 2>/dev/null
+        echo "$nombre $limite" >> /root/usuarios.db
+        
+        mkdir -p /etc/SSHPlus/senha
+        echo "$pass" > "/etc/SSHPlus/senha/$nombre"
+        
+        # Guardar en temp_db
+        echo "$nombre|SSH|$fecha_exp_hora" >> "$TEMP_DB"
+        
+        echo ""
+        echo "=============================================="
+        echo "  USUARIO SSH DEMO CREADO"
+        echo "=============================================="
+        echo "  Usuario: $nombre"
+        echo "  Password: $pass"
+        echo "  Limite: $limite conexion(es)"
+        echo "  Expira en: $duracion minutos"
+        echo "=============================================="
+        ;;
+        
+    HWID)
+        echo "=== DATOS DEL USUARIO HWID DEMO ==="
+        echo ""
+        
+        echo -n "Nombre identificador: "
+        read nombre
+        [[ -z "$nombre" ]] && echo "ERROR: Nombre vacio" && exit 1
+        
+        if grep -q "^$nombre|" /etc/SSHPlus/hwid.db 2>/dev/null; then
+            echo "ERROR: El nombre $nombre ya existe"
+            exit 1
+        fi
+        
+        echo -n "HWID del dispositivo: "
+        read hwid
+        hwid=$(echo "$hwid" | tr -d ' ')
+        [[ -z "$hwid" ]] && echo "ERROR: HWID vacio" && exit 1
+        
+        if grep -q "|$hwid|" /etc/SSHPlus/hwid.db 2>/dev/null; then
+            echo "ERROR: El HWID ya esta registrado"
+            exit 1
+        fi
+        
+        echo "$nombre|$hwid|$fecha_exp_dia" >> "/etc/SSHPlus/hwid.db"
+        
+        pass_crypt=$(perl -e 'print crypt($ARGV[0], "password")' "$hwid")
+        useradd -e "$fecha_exp_dia" -M -s /bin/false -p "$pass_crypt" "$hwid" 2>/dev/null
+        
+        echo "$nombre|HWID|$fecha_exp_hora" >> "$TEMP_DB"
+        
+        echo ""
+        echo "=============================================="
+        echo "  USUARIO HWID DEMO CREADO"
+        echo "=============================================="
+        echo "  Nombre: $nombre"
+        echo "  HWID: $hwid"
+        echo "  Expira en: $duracion minutos"
+        echo "=============================================="
+        ;;
+        
+    TOKEN)
+        echo "=== DATOS DEL USUARIO TOKEN DEMO ==="
+        echo ""
+        
+        echo -n "Nombre identificador: "
+        read nombre
+        [[ -z "$nombre" ]] && echo "ERROR: Nombre vacio" && exit 1
+        
+        if grep -q "^$nombre|" /etc/SSHPlus/token.db 2>/dev/null; then
+            echo "ERROR: El nombre $nombre ya existe"
+            exit 1
+        fi
+        
+        echo -n "Token: "
+        read token
+        [[ -z "$token" ]] && echo "ERROR: Token vacio" && exit 1
+        
+        echo -n "Password/Clave: "
+        read pass
+        [[ -z "$pass" ]] && echo "ERROR: Password vacio" && exit 1
+        
+        echo "$nombre|$token|$pass|$fecha_exp_dia" >> "/etc/SSHPlus/token.db"
+        echo "$nombre|TOKEN|$fecha_exp_hora" >> "$TEMP_DB"
+        
+        echo ""
+        echo "=============================================="
+        echo "  USUARIO TOKEN DEMO CREADO"
+        echo "=============================================="
+        echo "  Nombre: $nombre"
+        echo "  Token: $token"
+        echo "  Password: $pass"
+        echo "  Expira en: $duracion minutos"
+        echo "=============================================="
+        ;;
+esac
+
+echo "  ATENCION: Se eliminara automaticamente al expirar"
+echo "=============================================="
+echo ""
+sleep 3
+exit 0
+EOF
+
+chmod +x /bin/creardemo
+echo "✅ creardemo instalado"

@@ -1,0 +1,546 @@
+cat > /bin/userbackup << 'EOF'
+#!/bin/bash
+# userbackup - Sistema de backup automatico SSHPlus
+# Formato .sshgenkko - Compatible con SSH/HWID/TOKEN
+# Version sin colores
+
+clear
+
+BACKUP_DIR="/etc/SSHPlus/backups"
+CONFIG_FILE="/etc/SSHPlus/backup_config.cfg"
+CRON_MARKER="# SSHPLUS_BACKUP_CRON"
+
+mkdir -p "$BACKUP_DIR"
+
+# =============================================
+# FUNCION: Crear backup .sshgenkko
+# =============================================
+crear_backup_sshgenkko() {
+    local BACKUP_FILE="backup_$(date +%Y%m%d_%H%M%S).sshgenkko"
+    local BACKUP_PATH="$BACKUP_DIR/$BACKUP_FILE"
+    local TEMP_DIR="/tmp/sshplus_backup_$$"
+    
+    mkdir -p "$TEMP_DIR"
+    
+    echo "Creando backup..."
+    
+    # Crear archivo de manifiesto
+    echo "# SSHPLUS BACKUP MANIFEST" > "$TEMP_DIR/MANIFEST"
+    echo "# Fecha: $(date "+%d/%m/%Y %H:%M:%S")" >> "$TEMP_DIR/MANIFEST"
+    echo "# Host: $(hostname)" >> "$TEMP_DIR/MANIFEST"
+    echo "# IP: $(wget -qO- ipv4.icanhazip.com 2>/dev/null || echo "unknown")" >> "$TEMP_DIR/MANIFEST"
+    echo "# Formato: .sshgenkko v1.0" >> "$TEMP_DIR/MANIFEST"
+
+    if [ -f /root/usuarios.db ]; then
+        cp /root/usuarios.db "$TEMP_DIR/usuarios.db"
+        echo "usuarios.db: $(wc -l < /root/usuarios.db) usuarios" >> "$TEMP_DIR/MANIFEST"
+    fi
+    
+    if [ -f /etc/SSHPlus/hwid.db ]; then
+        cp /etc/SSHPlus/hwid.db "$TEMP_DIR/hwid.db"
+        echo "hwid.db: $(wc -l < /etc/SSHPlus/hwid.db) registros" >> "$TEMP_DIR/MANIFEST"
+    fi
+    
+    if [ -f /etc/SSHPlus/token.db ]; then
+        cp /etc/SSHPlus/token.db "$TEMP_DIR/token.db"
+        echo "token.db: $(wc -l < /etc/SSHPlus/token.db) registros" >> "$TEMP_DIR/MANIFEST"
+    fi
+    
+    if [ -f /etc/SSHPlus/locked_users.db ]; then
+        cp /etc/SSHPlus/locked_users.db "$TEMP_DIR/locked_users.db"
+    fi
+    
+    if [ -f /etc/SSHPlus/modo_actual.cfg ]; then
+        cp /etc/SSHPlus/modo_actual.cfg "$TEMP_DIR/modo_actual.cfg"
+    fi
+    
+    if [ -f /etc/SSHPlus/temp_users.db ] && [ -s /etc/SSHPlus/temp_users.db ]; then
+        cp /etc/SSHPlus/temp_users.db "$TEMP_DIR/temp_users.db"
+    fi
+    
+    if [ -d /etc/SSHPlus/senha ]; then
+        mkdir -p "$TEMP_DIR/senha"
+        cp -r /etc/SSHPlus/senha/* "$TEMP_DIR/senha/" 2>/dev/null
+        echo "senha: $(ls /etc/SSHPlus/senha/ 2>/dev/null | wc -l) archivos" >> "$TEMP_DIR/MANIFEST"
+    fi
+    
+    cp /etc/passwd "$TEMP_DIR/passwd" 2>/dev/null
+    cp /etc/shadow "$TEMP_DIR/shadow" 2>/dev/null
+    cp /etc/group "$TEMP_DIR/group" 2>/dev/null
+    cp /etc/gshadow "$TEMP_DIR/gshadow" 2>/dev/null
+    
+    cd "$TEMP_DIR"
+    tar czf "$BACKUP_PATH" * 2>/dev/null
+    cd - > /dev/null
+    
+    rm -rf "$TEMP_DIR"
+    
+    if [ -f "$BACKUP_PATH" ]; then
+        tamano=$(du -h "$BACKUP_PATH" | cut -f1)
+        echo "$BACKUP_PATH|$tamano"
+        return 0
+    else
+        return 1
+    fi
+}
+
+# =============================================
+# FUNCION: Restaurar backup .sshgenkko
+# =============================================
+restaurar_backup() {
+    echo "=============================================="
+    echo "         RESTAURAR BACKUP .sshgenkko"
+    echo "=============================================="
+    echo ""
+    
+    backups=()
+    while IFS= read -r f; do
+        backups+=("$f")
+    done < <(find "$BACKUP_DIR" -name "*.sshgenkko" -type f 2>/dev/null | sort -r)
+    
+    if [ ${#backups[@]} -eq 0 ]; then
+        echo "No se encontraron backups .sshgenkko en $BACKUP_DIR"
+        echo ""
+        return 1
+    fi
+    
+    echo "BACKUPS DISPONIBLES:"
+    echo "----------------------------------------"
+    i=1
+    for backup in "${backups[@]}"; do
+        nombre=$(basename "$backup")
+        tamano=$(du -h "$backup" | cut -f1)
+        fecha=$(date -r "$backup" "+%d/%m/%Y %H:%M:%S")
+        echo "  [$i] $nombre"
+        echo "      Tamano: $tamano | Fecha: $fecha"
+        i=$((i + 1))
+    done
+    echo "----------------------------------------"
+    echo -n "Seleccione un backup [1-${#backups[@]}] (0=cancelar): "
+    read opcion
+    
+    if [[ -z "$opcion" ]] || [[ "$opcion" == "0" ]]; then
+        echo "Cancelado."
+        return 0
+    fi
+    
+    if [[ ! "$opcion" =~ ^[0-9]+$ ]] || [ "$opcion" -lt 1 ] || [ "$opcion" -gt "${#backups[@]}" ]; then
+        echo "ERROR: Opcion invalida"
+        return 1
+    fi
+    
+    backup_seleccionado="${backups[$((opcion - 1))]}"
+    
+    echo ""
+    echo "Restaurando desde: $(basename "$backup_seleccionado")"
+    echo ""
+    echo "ADVERTENCIA: Esto sobrescribira los archivos actuales."
+    echo -n "Continuar? [s/n]: "
+    read confirmar
+    
+    if [[ ! "$confirmar" =~ ^[Ss]$ ]]; then
+        echo "Cancelado."
+        return 0
+    fi
+    
+    echo "Restaurando..."
+    TEMP_DIR="/tmp/sshplus_restore_$$"
+    mkdir -p "$TEMP_DIR"
+    
+    cd "$TEMP_DIR"
+    tar xzf "$backup_seleccionado" 2>/dev/null
+    cd - > /dev/null
+    
+    [ -f "$TEMP_DIR/usuarios.db" ] && cp "$TEMP_DIR/usuarios.db" /root/usuarios.db
+    [ -f "$TEMP_DIR/hwid.db" ] && cp "$TEMP_DIR/hwid.db" /etc/SSHPlus/hwid.db
+    [ -f "$TEMP_DIR/token.db" ] && cp "$TEMP_DIR/token.db" /etc/SSHPlus/token.db
+    [ -f "$TEMP_DIR/locked_users.db" ] && cp "$TEMP_DIR/locked_users.db" /etc/SSHPlus/locked_users.db
+    [ -f "$TEMP_DIR/modo_actual.cfg" ] && cp "$TEMP_DIR/modo_actual.cfg" /etc/SSHPlus/modo_actual.cfg
+    [ -f "$TEMP_DIR/temp_users.db" ] && cp "$TEMP_DIR/temp_users.db" /etc/SSHPlus/temp_users.db
+    [ -f "$TEMP_DIR/passwd" ] && cp "$TEMP_DIR/passwd" /etc/passwd
+    [ -f "$TEMP_DIR/shadow" ] && cp "$TEMP_DIR/shadow" /etc/shadow
+    [ -f "$TEMP_DIR/group" ] && cp "$TEMP_DIR/group" /etc/group
+    [ -f "$TEMP_DIR/gshadow" ] && cp "$TEMP_DIR/gshadow" /etc/gshadow
+    
+    if [ -d "$TEMP_DIR/senha" ]; then
+        mkdir -p /etc/SSHPlus/senha
+        cp -r "$TEMP_DIR/senha/"* /etc/SSHPlus/senha/ 2>/dev/null
+    fi
+    
+    rm -rf "$TEMP_DIR"
+    
+    echo ""
+    echo "=============================================="
+    echo "  BACKUP RESTAURADO EXITOSAMENTE"
+    echo "=============================================="
+    echo ""
+}
+
+# =============================================
+# FUNCION: Enviar backup por email
+# =============================================
+enviar_email() {
+    backup_file="$1"
+    
+    if [ ! -f /etc/SSHPlus/smtp_config.cfg ]; then
+        echo "ERROR: No hay configuracion SMTP. Configure primero."
+        return 1
+    fi
+    
+    source /etc/SSHPlus/smtp_config.cfg
+    
+    if [ -z "${SMTP_SERVER:-}" ] || [ -z "${SMTP_TO:-}" ]; then
+        echo "ERROR: Configuracion SMTP incompleta"
+        return 1
+    fi
+    
+    echo "Enviando backup por email a ${SMTP_TO}..."
+    
+    TEMP_EMAIL="/tmp/sshplus_email_$$.txt"
+    BOUNDARY="----=_SSHPLUS_$(date +%s)"
+    
+    cat > "$TEMP_EMAIL" << EOM
+From: SSHPlus Backup <${SMTP_USER}>
+To: ${SMTP_TO}
+Subject: [SSHPLUS BACKUP] $(date "+%d/%m/%Y %H:%M:%S")
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="${BOUNDARY}"
+
+--${BOUNDARY}
+Content-Type: text/plain; charset=UTF-8
+
+Backup automatico de SSHPlus
+=============================
+Fecha: $(date "+%d/%m/%Y %H:%M:%S")
+Host: $(hostname)
+IP: $(wget -qO- ipv4.icanhazip.com 2>/dev/null || echo "unknown")
+
+Archivo adjunto: $(basename "$backup_file")
+Tamano: $(du -h "$backup_file" | cut -f1)
+
+--
+SSHPlus Backup System
+EOM
+    
+    echo "" >> "$TEMP_EMAIL"
+    echo "--${BOUNDARY}" >> "$TEMP_EMAIL"
+    echo "Content-Type: application/octet-stream; name=\"$(basename "$backup_file")\"" >> "$TEMP_EMAIL"
+    echo "Content-Disposition: attachment; filename=\"$(basename "$backup_file")\"" >> "$TEMP_EMAIL"
+    echo "Content-Transfer-Encoding: base64" >> "$TEMP_EMAIL"
+    echo "" >> "$TEMP_EMAIL"
+    base64 "$backup_file" >> "$TEMP_EMAIL"
+    echo "" >> "$TEMP_EMAIL"
+    echo "--${BOUNDARY}--" >> "$TEMP_EMAIL"
+    
+    if command -v curl &> /dev/null; then
+        curl --silent --show-error \
+            --url "smtps://${SMTP_SERVER}:${SMTP_PORT:-465}" \
+            --ssl-reqd \
+            --mail-from "${SMTP_USER}" \
+            --mail-rcpt "${SMTP_TO}" \
+            --user "${SMTP_USER}:${SMTP_PASS}" \
+            --upload-file "$TEMP_EMAIL" 2>/tmp/sshplus_email_error.log
+        
+        if [ $? -eq 0 ]; then
+            echo "Email enviado exitosamente a ${SMTP_TO}"
+            rm -f "$TEMP_EMAIL"
+            return 0
+        else
+            echo "ERROR al enviar email:"
+            cat /tmp/sshplus_email_error.log 2>/dev/null
+            rm -f "$TEMP_EMAIL"
+            return 1
+        fi
+    else
+        echo "ERROR: curl no esta instalado. apt-get install curl -y"
+        rm -f "$TEMP_EMAIL"
+        return 1
+    fi
+}
+
+# =============================================
+# FUNCION: Configurar SMTP
+# =============================================
+configurar_smtp() {
+    echo "=============================================="
+    echo "         CONFIGURACION SMTP"
+    echo "=============================================="
+    echo ""
+    echo "Ejemplos:"
+    echo "  Gmail:   smtp.gmail.com / 465"
+    echo "  Outlook: smtp-mail.outlook.com / 587"
+    echo "  Yahoo:   smtp.mail.yahoo.com / 465"
+    echo ""
+    echo -n "Servidor SMTP: "
+    read SMTP_SERVER
+    echo -n "Puerto (465/587): "
+    read SMTP_PORT
+    [[ -z "$SMTP_PORT" ]] && SMTP_PORT="465"
+    echo -n "Usuario/Email: "
+    read SMTP_USER
+    echo -n "Contrasena/App Password: "
+    read -s SMTP_PASS
+    echo ""
+    echo -n "Email destinatario: "
+    read SMTP_TO
+    
+    cat > /etc/SSHPlus/smtp_config.cfg << EOCFG
+SMTP_SERVER="$SMTP_SERVER"
+SMTP_PORT="$SMTP_PORT"
+SMTP_USER="$SMTP_USER"
+SMTP_PASS="$SMTP_PASS"
+SMTP_TO="$SMTP_TO"
+EOCFG
+    chmod 600 /etc/SSHPlus/smtp_config.cfg
+    
+    echo ""
+    echo "Configuracion SMTP guardada"
+    echo ""
+}
+
+# =============================================
+# FUNCION: Programar backup automatico
+# =============================================
+programar_backup() {
+    echo "=============================================="
+    echo "      PROGRAMAR BACKUP AUTOMATICO"
+    echo "=============================================="
+    echo ""
+    echo "Cada cuantas horas desea hacer el backup?"
+    echo "  [1] Cada 1 hora"
+    echo "  [2] Cada 6 horas"
+    echo "  [3] Cada 12 horas"
+    echo "  [4] Cada 24 horas"
+    echo "  [5] Personalizado"
+    echo "  [0] Desactivar backup automatico"
+    echo ""
+    echo -n "Opcion: "
+    read opcion
+    
+    horas=0
+    case "$opcion" in
+        1) horas=1 ;;
+        2) horas=6 ;;
+        3) horas=12 ;;
+        4) horas=24 ;;
+        5) 
+            echo -n "Cada cuantas horas?: "
+            read horas
+            [[ ! "$horas" =~ ^[0-9]+$ ]] && horas=0
+            ;;
+        0)
+            crontab -l 2>/dev/null | grep -v "$CRON_MARKER" | crontab -
+            rm -f "$CONFIG_FILE"
+            echo "Backup automatico DESACTIVADO"
+            return 0
+            ;;
+        *) echo "Opcion invalida"; return 1 ;;
+    esac
+    
+    if [ "$horas" -lt 1 ]; then
+        echo "ERROR: Las horas deben ser mayor a 0"
+        return 1
+    fi
+    
+    echo -n "Enviar backup por email automaticamente? [s/n]: "
+    read enviar
+    email_auto=0
+    [[ "$enviar" =~ ^[Ss]$ ]] && email_auto=1
+    
+    echo -n "Cuantos backups antiguos mantener? [5]: "
+    read keep
+    [[ -z "$keep" ]] && keep=5
+    [[ ! "$keep" =~ ^[0-9]+$ ]] && keep=5
+    
+    cat > "$CONFIG_FILE" << EOCFG2
+BACKUP_HORAS=$horas
+BACKUP_EMAIL=$email_auto
+BACKUP_KEEP=$keep
+EOCFG2
+    
+    cat > /bin/sshplus_auto_backup << 'AUTOBACK'
+#!/bin/bash
+if [ -f /etc/SSHPlus/backup_config.cfg ]; then
+    source /etc/SSHPlus/backup_config.cfg
+fi
+BACKUP_DIR="/etc/SSHPlus/backups"
+
+resultado=$(/bin/userbackup --silent 2>&1)
+backup_file=$(echo "$resultado" | cut -d'|' -f1)
+
+if [ -n "$backup_file" ] && [ -f "$backup_file" ]; then
+    if [ "${BACKUP_EMAIL:-0}" == "1" ]; then
+        /bin/userbackup --send "$backup_file" 2>/dev/null
+    fi
+    keep="${BACKUP_KEEP:-5}"
+    ls -t "$BACKUP_DIR"/*.sshgenkko 2>/dev/null | tail -n +$((keep + 1)) | xargs rm -f 2>/dev/null
+fi
+AUTOBACK
+    chmod +x /bin/sshplus_auto_backup
+    
+    cron_line=""
+    if [ "$horas" -le 1 ]; then
+        cron_line="0 * * * *"
+    else
+        cron_line="0 */$horas * * *"
+    fi
+    
+    (crontab -l 2>/dev/null | grep -v "$CRON_MARKER"; echo "$cron_line /bin/sshplus_auto_backup $CRON_MARKER") | crontab -
+    
+    echo ""
+    echo "=============================================="
+    echo "  BACKUP AUTOMATICO PROGRAMADO"
+    echo "=============================================="
+    echo "  Frecuencia: Cada $horas horas"
+    echo "  Email: $([ $email_auto -eq 1 ] && echo 'Activado' || echo 'Desactivado')"
+    echo "  Backups a mantener: $keep"
+    echo "=============================================="
+    echo ""
+}
+
+# =============================================
+# FUNCION: Listar backups
+# =============================================
+listar_backups() {
+    echo "=============================================="
+    echo "         BACKUPS .sshgenkko DISPONIBLES"
+    echo "=============================================="
+    echo ""
+    
+    encontrados=0
+    for f in "$BACKUP_DIR"/*.sshgenkko; do
+        if [ -f "$f" ]; then
+            nombre=$(basename "$f")
+            tamano=$(du -h "$f" | cut -f1)
+            fecha=$(date -r "$f" "+%d/%m/%Y %H:%M:%S")
+            echo "  $nombre"
+            echo "  Tamano: $tamano | Fecha: $fecha"
+            echo ""
+            encontrados=$((encontrados + 1))
+        fi
+    done
+    
+    if [ $encontrados -eq 0 ]; then
+        echo "  No hay backups disponibles"
+    else
+        echo "  Total: $encontrados backups"
+    fi
+    echo ""
+}
+
+# =============================================
+# Obtener ultimo backup (funcion)
+# =============================================
+get_ultimo_backup() {
+    ls -t "$BACKUP_DIR"/*.sshgenkko 2>/dev/null | head -1
+}
+
+# =============================================
+# MENU PRINCIPAL
+# =============================================
+
+if [ "$1" == "--silent" ]; then
+    crear_backup_sshgenkko
+    exit $?
+fi
+
+if [ "$1" == "--send" ]; then
+    enviar_email "$2"
+    exit $?
+fi
+
+while true; do
+    clear
+    echo "=============================================="
+    echo "    SISTEMA DE BACKUP SSHPLUS (.sshgenkko)"
+    echo "=============================================="
+    echo ""
+    
+    if [ -f "$CONFIG_FILE" ]; then
+        source "$CONFIG_FILE"
+        echo "  Backup automatico: ACTIVO (cada ${BACKUP_HORAS}h)"
+        echo "  Email: $([ ${BACKUP_EMAIL:-0} -eq 1 ] && echo 'ACTIVO' || echo 'DESACTIVADO')"
+    else
+        echo "  Backup automatico: DESACTIVADO"
+    fi
+    
+    ultimo=$(get_ultimo_backup)
+    if [ -n "$ultimo" ]; then
+        fecha=$(date -r "$ultimo" "+%d/%m/%Y %H:%M:%S")
+        echo "  Ultimo backup: $fecha"
+    fi
+    
+    echo ""
+    echo "=============================================="
+    echo "  [1] Crear backup ahora"
+    echo "  [2] Restaurar backup"
+    echo "  [3] Listar backups"
+    echo "  [4] Programar backup automatico"
+    echo "  [5] Configurar email (SMTP)"
+    echo "  [6] Enviar ultimo backup por email"
+    echo "  [0] Volver al menu principal"
+    echo "=============================================="
+    echo -n "  Opcion: "; read opc
+    
+    case $opc in
+        1)
+            echo ""
+            resultado=$(crear_backup_sshgenkko)
+            if [ $? -eq 0 ]; then
+                backup_file=$(echo "$resultado" | cut -d'|' -f1)
+                tamano=$(echo "$resultado" | cut -d'|' -f2)
+                echo ""
+                echo "=============================================="
+                echo "  BACKUP CREADO EXITOSAMENTE"
+                echo "=============================================="
+                echo "  Archivo: $(basename "$backup_file")"
+                echo "  Tamano: $tamano"
+                echo "  Ubicacion: $BACKUP_DIR"
+                echo "=============================================="
+            else
+                echo "ERROR al crear backup"
+            fi
+            echo ""
+            echo -n "ENTER para continuar..."; read
+            ;;
+        2)
+            restaurar_backup
+            echo ""
+            echo -n "ENTER para continuar..."; read
+            ;;
+        3)
+            listar_backups
+            echo -n "ENTER para continuar..."; read
+            ;;
+        4)
+            programar_backup
+            echo ""
+            echo -n "ENTER para continuar..."; read
+            ;;
+        5)
+            configurar_smtp
+            echo ""
+            echo -n "ENTER para continuar..."; read
+            ;;
+        6)
+            ultimo=$(get_ultimo_backup)
+            if [ -n "$ultimo" ]; then
+                enviar_email "$ultimo"
+            else
+                echo "No hay backups disponibles para enviar"
+            fi
+            echo ""
+            echo -n "ENTER para continuar..."; read
+            ;;
+        0)
+            exit 0
+            ;;
+        *)
+            echo "Opcion invalida"; sleep 1
+            ;;
+    esac
+done
+EOF
+
+chmod +x /bin/userbackup
+echo "✅ userbackup corregido - errores arreglados"

@@ -1,0 +1,100 @@
+cat > /bin/detalhes << 'EOF'
+#!/bin/bash
+# detalhes - Informacion del VPS/Droplet
+# Version sin colores
+
+clear
+echo "=============================================="
+echo "            INFO DE TU DROPLET"
+echo "=============================================="
+echo ""
+
+# SISTEMA OPERATIVO
+if [ -f /etc/lsb-release ]; then
+    echo "--- SISTEMA OPERATIVO ---"
+    echo ""
+    name=$(cat /etc/lsb-release | grep DESCRIPTION | awk -F = {'print $2'})
+    codename=$(cat /etc/lsb-release | grep CODENAME | awk -F = {'print $2'})
+    echo "  Nombre: $name"
+    echo "  CodeName: $codename"
+    echo "  Kernel: $(uname -s)"
+    echo "  Kernel Release: $(uname -r)"
+    if [ -f /etc/os-release ]; then
+        devlike=$(cat /etc/os-release | grep LIKE | awk -F = {'print $2'})
+        echo "  Derivado de OS: $devlike"
+    fi
+    echo ""
+else
+    system=$(cat /etc/issue.net)
+    echo "--- SISTEMA OPERATIVO ---"
+    echo ""
+    echo "  Nombre: $system"
+    echo ""
+fi
+
+# PROCESADOR
+if [ -f /proc/cpuinfo ]; then
+    uso=$(top -bn1 | awk '/Cpu/ { cpu = "" 100 - $8 "%" }; END { print cpu }')
+    echo "--- PROCESADOR ---"
+    echo ""
+    modelo=$(cat /proc/cpuinfo | grep "model name" | uniq | awk -F : {'print $2'})
+    cpucores=$(grep -c cpu[0-9] /proc/stat)
+    cache=$(cat /proc/cpuinfo | grep "cache size" | uniq | awk -F : {'print $2'})
+    echo "  Modelo: $modelo"
+    echo "  Nucleos: $cpucores"
+    echo "  Memoria Cache: $cache"
+    echo "  Arquitectura: $(uname -p)"
+    echo "  Utilizado: $uso"
+    echo ""
+else
+    echo "--- PROCESADOR ---"
+    echo ""
+    echo "  No fue posible obtener informacion"
+    echo ""
+fi
+
+# MEMORIA RAM
+if free 1>/dev/null 2>/dev/null; then
+    ram1=$(free -h | grep -i mem | awk {'print $2'})
+    ram2=$(free -h | grep -i mem | awk {'print $4'})
+    ram3=$(free -h | grep -i mem | awk {'print $3'})
+    usoram=$(free -m | awk 'NR==2{printf "%.2f%%", $3*100/$2 }')
+
+    echo "--- MEMORIA RAM ---"
+    echo ""
+    echo "  Total: $ram1"
+    echo "  En Uso: $ram3"
+    echo "  Libre: $ram2"
+    echo "  Utilizado: $usoram"
+    echo ""
+else
+    echo "--- MEMORIA RAM ---"
+    echo ""
+    echo "  No fue posible obtener info"
+    echo ""
+fi
+
+# SERVICIOS EN EJECUCION
+echo "--- SERVICIOS EN EJECUCION ---"
+echo ""
+PT=$(lsof -V -i tcp -P -n 2>/dev/null | grep -v "ESTABLISHED" | grep -v "COMMAND" | grep "LISTEN")
+if [ -n "$PT" ]; then
+    for porta in $(echo "$PT" | cut -d: -f2 | cut -d' ' -f1 | uniq); do
+        svcs=$(echo "$PT" | grep -w "$porta" | awk '{print $1}' | uniq)
+        echo "  Servicio: $svcs - Puerto: $porta"
+    done
+else
+    echo "  No se encontraron servicios en escucha"
+fi
+
+echo ""
+echo "=============================================="
+echo ""
+echo -n "Presiona ENTER para volver al menu..."
+read
+
+exit 0
+EOF
+
+chmod +x /bin/detalhes
+echo "✅ detalhes actualizado con pausa"

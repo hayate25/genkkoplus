@@ -1,0 +1,175 @@
+﻿cat > /bin/menu << 'ENDOFFILE'
+#!/bin/bash
+# menu - Menú principal de gestion de usuarios SSHPlus
+# Versión sin colores - Compatible con bots
+
+MODO_ACTUAL="/etc/SSHPlus/modo_actual.cfg"
+
+# Inicializar modo si no existe
+if [ ! -f "$MODO_ACTUAL" ]; then
+    echo "SSH" > "$MODO_ACTUAL"
+fi
+
+menu_gestion_usuarios() {
+    while true; do
+        modo=$(cat "$MODO_ACTUAL")
+        clear
+        echo "=========================================="
+        echo "  GESTION DE USUARIOS - MODO: $modo"
+        echo "=========================================="
+        
+        case "$modo" in
+            SSH)
+                echo "  [1] Crear usuario SSH"
+                echo "  [2] Listar usuarios SSH"
+                echo "  [3] Borrar usuario SSH"
+                echo "  [4] Editar limite conexiones"
+                echo "  [5] Editar contraseña"
+                echo "  [6] Renovar expiracion"
+                echo "  [7] Borrar expirados"
+                echo "  [8] Informacion usuarios"
+                echo "  [9] Bloquear/Desbloquear usuario"
+                echo "  [D] Crear usuario DEMO"
+                ;;
+            HWID)
+                echo "  [1] Crear usuario HWID"
+                echo "  [2] Listar usuarios HWID"
+                echo "  [3] Borrar usuario HWID"
+                echo "  [4] Editar HWID"
+                echo "  [5] Renovar expiracion"
+                echo "  [6] Borrar expirados"
+                echo "  [7] Informacion usuarios"
+                echo "  [9] Bloquear/Desbloquear usuario"
+                echo "  [D] Crear usuario DEMO"
+                ;;
+            TOKEN)
+                echo "  [1] Crear usuario TOKEN"
+                echo "  [2] Listar usuarios TOKEN"
+                echo "  [3] Borrar usuario TOKEN"
+                echo "  [4] Editar contraseña"
+                echo "  [5] Renovar expiracion"
+                echo "  [6] Borrar expirados"
+                echo "  [7] Informacion usuarios"
+                echo "  [9] Bloquear/Desbloquear usuario"
+                echo "  [D] Crear usuario DEMO"
+                ;;
+        esac
+        
+        echo "=========================================="
+        echo "  [0] Cambiar modo (actual: $modo)"
+        echo "  [00] Volver al menu principal"
+        echo "=========================================="
+        echo -n "  Opcion: "; read opt
+        
+        case $opt in
+            1)
+                case "$modo" in
+                    SSH)   /bin/ssh_manager create ;;
+                    HWID)  /bin/hwid_manager create ;;
+                    TOKEN) /bin/token_manager create ;;
+                esac
+                ;;
+            2)
+                case "$modo" in
+                    SSH)   /bin/ssh_manager list ;;
+                    HWID)  /bin/hwid_manager list ;;
+                    TOKEN) /bin/token_manager list ;;
+                esac
+                echo ""; read -p "ENTER para continuar..."
+                ;;
+            3)
+                case "$modo" in
+                    SSH)   /bin/ssh_manager delete ;;
+                    HWID)  /bin/hwid_manager delete ;;
+                    TOKEN) /bin/token_manager delete ;;
+                esac
+                ;;
+            4)
+                case "$modo" in
+                    SSH)   /bin/alterarlimite ;;
+                    HWID)  /bin/editar_hwid ;;
+                    TOKEN) /bin/alterarsenha ;;
+                esac
+                ;;
+            5)
+                case "$modo" in
+                    SSH)   /bin/alterarsenha ;;
+                    HWID)  /bin/mudardata ;;
+                    TOKEN) /bin/mudardata ;;
+                esac
+                ;;
+            6)
+                case "$modo" in
+                    SSH)   /bin/mudardata ;;
+                    HWID)  /bin/mudardata ;;
+                    TOKEN) /bin/mudardata ;;
+                esac
+                ;;
+            7)
+                case "$modo" in
+                    SSH)   /bin/expcleaner ;;
+                    HWID)  /bin/expcleaner ;;
+                    TOKEN) /bin/expcleaner ;;
+                esac
+                ;;
+            8)
+                case "$modo" in
+                    SSH)   /bin/infousers ;;
+                    HWID)  /bin/infousers ;;
+                    TOKEN) /bin/infousers ;;
+                esac
+                echo ""; read -p "ENTER para continuar..."
+                ;;
+            9)
+                /bin/bloquear
+                ;;
+            D|d)
+                /bin/creardemo
+                ;;
+            0)
+                clear
+                echo "  [1] SSH  [2] HWID  [3] TOKEN"
+                echo -n "  Nuevo modo: "; read nm
+                case $nm in
+                    1) echo "SSH" > "$MODO_ACTUAL" ;;
+                    2) echo "HWID" > "$MODO_ACTUAL" ;;
+                    3) echo "TOKEN" > "$MODO_ACTUAL" ;;
+                esac
+                ;;
+            00) return ;;
+        esac
+    done
+}
+
+# Menú principal
+while true; do
+    clear
+    _expuser=$(cat /etc/SSHPlus/Exp 2>/dev/null || echo "0")
+    echo "=========================================="
+    echo "         MENU PRINCIPAL SSHPLUS"
+    echo "=========================================="
+    echo "  Usuarios: $(wc -l < /root/usuarios.db 2>/dev/null || echo 0)"
+    echo "  Expirados: $_expuser"
+    echo "=========================================="
+    echo "  [1] Gestion de usuarios"
+    echo "  [2] Monitor de conexiones"
+    echo "  [3] Informacion del VPS"
+    echo "  [4] Backup de usuarios"
+    echo "  [5] Instalar/Configurar"
+    echo "  [0] Salir"
+    echo "=========================================="
+    echo -n "  Opcion: "; read opc
+    
+    case $opc in
+        1) menu_gestion_usuarios ;;
+        2) /bin/sshmonitor ;;
+        3) /bin/detalhes ;;
+        4) /bin/userbackup ;;
+        5) /bin/conexao ;;
+        0) exit 0 ;;
+    esac
+done
+ENDOFFILE
+
+chmod +x /bin/menu
+echo "✅ Menú completo instalado correctamente"

@@ -1,0 +1,161 @@
+cat > /bin/alterarlimite << 'EOF'
+#!/bin/bash
+# alterarlimite - Módulo para cambiar límite de conexiones simultáneas
+# Compatible con sistema SSHPlus (IDs dinámicos)
+# Versión sin colores para compatibilidad con bots
+
+clear
+echo "=============================================="
+echo "     ALTERAR LIMITE DE CONEXIONES SIMULTANEAS"
+echo "=============================================="
+echo ""
+
+database="/root/usuarios.db"
+
+if [ ! -f "$database" ]; then
+    echo "ERROR: Archivo $database NO encontrado"
+    echo ""
+    exit 1
+fi
+
+# Función para obtener usuario por ID (reutilizable)
+get_user_by_id() {
+    local id="$1"
+    local current=1
+    while IFS=' ' read -r user limite; do
+        if [[ $current -eq $id ]]; then
+            echo "$user"
+            return
+        fi
+        current=$((current+1))
+    done < "$database"
+}
+
+# Función para obtener límite por ID
+get_limit_by_id() {
+    local id="$1"
+    local current=1
+    while IFS=' ' read -r user limite; do
+        if [[ $current -eq $id ]]; then
+            echo "$limite"
+            return
+        fi
+        current=$((current+1))
+    done < "$database"
+}
+
+# Listar usuarios con IDs
+echo "LISTA DE USUARIOS Y SUS LIMITES:"
+echo "----------------------------------------"
+echo ""
+
+id=0
+while IFS=' ' read -r user limit; do
+    [[ -z "$user" ]] && continue
+    id=$((id + 1))
+    # Formato: [ID] - Usuario (Limite: X)
+    printf "[%02d] - %-25s Limite: %s\n" "$id" "$user" "$limit"
+done < "$database"
+
+# Si no hay usuarios
+if [[ $id -eq 0 ]]; then
+    echo "No hay usuarios registrados en el sistema."
+    exit 1
+fi
+
+echo ""
+echo "----------------------------------------"
+echo "Total de usuarios: $id"
+echo ""
+
+# Seleccionar usuario por ID
+echo -n "Seleccione un usuario por ID [1-$id]: "
+read option
+
+# Validar entrada
+if [[ -z $option ]]; then
+    echo ""
+    echo "ERROR: Debe seleccionar un ID"
+    echo ""
+    exit 1
+fi
+
+# Validar que sea número
+if ! [[ "$option" =~ ^[0-9]+$ ]]; then
+    echo ""
+    echo "ERROR: Debe ingresar un número válido"
+    echo ""
+    exit 1
+fi
+
+# Validar rango
+if [[ $option -lt 1 ]] || [[ $option -gt $id ]]; then
+    echo ""
+    echo "ERROR: ID fuera de rango [1-$id]"
+    echo ""
+    exit 1
+fi
+
+# Obtener usuario por ID
+usuario=$(get_user_by_id "$option")
+limit_actual=$(get_limit_by_id "$option")
+
+if [[ -z $usuario ]]; then
+    echo ""
+    echo "ERROR: Usuario no encontrado"
+    echo ""
+    exit 1
+fi
+
+echo ""
+echo "Usuario seleccionado: $usuario"
+echo "Límite actual: $limit_actual"
+echo ""
+
+# Solicitar nuevo límite
+echo -n "Nuevo límite para el usuario $usuario: "
+read sshnum
+
+# Validar nuevo límite
+if [[ -z $sshnum ]]; then
+    echo ""
+    echo "ERROR: Debe escribir un número"
+    echo ""
+    exit 1
+fi
+
+if ! [[ "$sshnum" =~ ^[0-9]+$ ]]; then
+    echo ""
+    echo "ERROR: Debe escribir un número válido"
+    echo ""
+    exit 1
+fi
+
+if [[ $sshnum -lt 1 ]]; then
+    echo ""
+    echo "ERROR: Debe digitar un número mayor que cero"
+    echo ""
+    exit 1
+fi
+
+# Aplicar nuevo límite
+grep -v "^$usuario " "$database" > /tmp/a
+sleep 0.5
+mv /tmp/a "$database"
+echo "$usuario $sshnum" >> "$database"
+
+echo ""
+echo "=============================================="
+echo "  LIMITE APLICADO CORRECTAMENTE"
+echo "  Usuario: $usuario"
+echo "  Límite anterior: $limit_actual"
+echo "  Nuevo límite: $sshnum"
+echo "=============================================="
+echo ""
+
+sleep 2
+exit 0
+EOF
+
+chmod +x /bin/alterarlimite
+echo "✅ alterarlimite instalado correctamente en /bin/alterarlimite"

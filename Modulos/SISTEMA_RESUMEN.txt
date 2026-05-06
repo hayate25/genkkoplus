@@ -1,0 +1,258 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                                                                            ║
+║           ✅ SISTEMA DE GESTIÓN DE USUARIOS CON HWID - COMPLETADO         ║
+║                                                                            ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+
+📦 ARCHIVOS CREADOS / MODIFICADOS:
+═══════════════════════════════════════════════════════════════════════════
+
+┌─ NUEVOS ARCHIVOS ────────────────────────────────────────────────┐
+│                                                                  │
+│  1. user_manager.py        (5.9 KB)                             │
+│     • Núcleo del sistema de gestión de usuarios                │
+│     • Manejo de HWID y validación                              │
+│     • Thread-safe para múltiples conexiones                    │
+│     • Almacenamiento en JSON                                   │
+│                                                                  │
+│  2. user_cli.py            (5.1 KB)                             │
+│     • Interfaz de línea de comandos                            │
+│     • Comandos: create, list, register-hwid, info, delete, etc │
+│     • Gestión completa de usuarios                             │
+│                                                                  │
+│  3. test_user_system.py    (4.6 KB)                             │
+│     • Script de prueba y demostración                          │
+│     • Valida todo el flujo del sistema                         │
+│     • Crea escenarios de prueba                                │
+│                                                                  │
+│  4. README.md              (4.7 KB)                             │
+│     • Documentación técnica completa                           │
+│     • Ejemplos de uso                                          │
+│     • Explicación de arquitectura                              │
+│                                                                  │
+│  5. QUICKSTART.py          (9.7 KB)                             │
+│     • Guía rápida de inicio                                    │
+│     • Instrucciones paso a paso                                │
+│                                                                  │
+│  6. wsproxy.py             (MODIFICADO)                         │
+│     • Integración de autenticación con usuarios                │
+│     • Validación de HWID                                       │
+│     • Logging mejorado                                         │
+│     • Backward-compatible con sistema antiguo                  │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+
+
+📊 DIAGRAMA DE ARQUITECTURA:
+═══════════════════════════════════════════════════════════════════════════
+
+                              CLIENTE
+                                 │
+                                 │ HTTP Request con Headers
+                                 │ X-User, X-Pass, X-HWID, X-Real-Host
+                                 ↓
+                         ┌──────────────────┐
+                         │   wsproxy.py     │
+                         └────────┬─────────┘
+                                  │
+                    ┌─────────────┴─────────────┐
+                    │                           │
+                    ↓                           ↓
+           ┌────────────────┐          ┌─────────────────┐
+           │ USE_USER_SYSTEM│          │ USE_USER_SYSTEM │
+           │  = True (NUEVO)│          │  = False (VIEJO)│
+           └────────┬───────┘          └────────┬────────┘
+                    │                           │
+                    ↓                           ↓
+         ┌─────────────────────┐    ┌──────────────────────┐
+         │  _authenticate_user │    │  PASS global (viejo) │
+         └────────┬────────────┘    └──────────┬───────────┘
+                  │                            │
+                  ↓                            ↓
+        ┌──────────────────────┐   (Backward compatible)
+        │ user_manager.authenticate
+        │  • Verificar usuario
+        │  • Verificar contraseña (SHA256)
+        │  • Validar HWID si existe
+        └────────┬─────────────┘
+                 │
+        ┌────────┴──────────┐
+        │                   │
+    ✅ AUTH OK         ❌ AUTH FAILED
+        │                   │
+        ↓                   ↓
+   CONNECT to         Send 401
+   X-Real-Host       Unauthorized
+        │                   │
+        └───────┬───────────┘
+                │
+                ↓
+         CLOSE CONNECTION
+
+
+🔐 FLUJO DE VALIDACIÓN DE HWID:
+═══════════════════════════════════════════════════════════════════════════
+
+Cliente                          Proxy                       Base de Datos
+   │                               │                              │
+   │── X-User: admin ─────────────→│                              │
+   │── X-Pass: pass123 ───────────→│                              │
+   │── X-HWID: ABC123 ────────────→│                              │
+   │                               │── Buscar usuario 'admin' ───→│
+   │                               │←─ Encontrado ────────────────│
+   │                               │                              │
+   │                               │ ✓ Contraseña coincide       │
+   │                               │ ✓ HWID registrado: ABC123   │
+   │                               │ ✓ Usuario activo            │
+   │                               │ ✓ Actualizar login          │
+   │                               │←─ Guardar cambios ──────────│
+   │                               │                              │
+   │←─────── CONECTADO ────────────│                              │
+   │                               │                              │
+
+
+📋 CASOS DE USO:
+═══════════════════════════════════════════════════════════════════════════
+
+CASO 1: Usuario sin HWID
+────────────────────────
+Creación:    python3 user_cli.py create alice pass123
+Conexión:    curl -H "X-User: alice" \
+                  -H "X-Pass: pass123" \
+                  -H "X-Real-Host: 127.0.0.1:22" \
+                  http://proxy:80
+Resultado:   ✅ Conectado (HWID opcional)
+
+
+CASO 2: Usuario con HWID obligatorio
+─────────────────────────────────────
+Creación:    python3 user_cli.py create bob pass456 --hwid "PC-12345"
+Conexión OK: curl -H "X-User: bob" \
+                  -H "X-Pass: pass456" \
+                  -H "X-HWID: PC-12345" \
+                  -H "X-Real-Host: 127.0.0.1:22" \
+                  http://proxy:80
+Resultado:   ✅ Conectado
+
+Conexión con HWID incorrecto:
+                  -H "X-HWID: WRONG-ID" \
+Resultado:   ❌ 401 Unauthorized
+
+
+CASO 3: Agregar HWID a usuario existente
+─────────────────────────────────────────
+                  python3 user_cli.py register-hwid alice "LAP-67890"
+
+Ahora alice necesita proporcionar ese HWID en futuras conexiones
+
+
+⚙️ CONFIGURACIÓN IMPORTANTE:
+═══════════════════════════════════════════════════════════════════════════
+
+En wsproxy.py, línea 17:
+
+USE_USER_SYSTEM = True   ← ACTIVAR NUEVO SISTEMA
+# USE_USER_SYSTEM = False ← DESACTIVAR (volver a contraseña global)
+
+Para cambiar puerto de escucha:
+    python3 wsproxy.py -p 8080
+
+Para cambiar IP de escucha:
+    python3 wsproxy.py -b 192.168.1.100 -p 80
+
+
+🚀 COMANDOS RÁPIDOS:
+═══════════════════════════════════════════════════════════════════════════
+
+Crear usuario:           python3 user_cli.py create admin pass123
+Listar usuarios:         python3 user_cli.py list
+Ver información:         python3 user_cli.py info admin
+Registrar HWID:          python3 user_cli.py register-hwid admin "ABC123"
+Desactivar usuario:      python3 user_cli.py toggle deactivate admin
+Activar usuario:         python3 user_cli.py toggle activate admin
+Eliminar usuario:        python3 user_cli.py delete admin -f
+
+Iniciar proxy:           python3 wsproxy.py
+Ejecutar pruebas:        python3 test_user_system.py
+Ver guía rápida:         python3 QUICKSTART.py
+
+
+📊 BASE DE DATOS (users.json):
+═══════════════════════════════════════════════════════════════════════════
+
+{
+  "admin": {
+    "username": "admin",
+    "password_hash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+    "hwid": "ABC123DEF456",
+    "created_at": "2024-05-01T21:31:00",
+    "last_login": "2024-05-01T21:35:45",
+    "active": true,
+    "connections": 12
+  }
+}
+
+La contraseña se almacena como hash SHA256 (irreversible)
+El HWID se almacena en texto plano para validación exacta
+
+
+✅ VERIFICACIÓN FINAL:
+═══════════════════════════════════════════════════════════════════════════
+
+[✓] user_manager.py - Sistema de usuarios creado
+[✓] user_cli.py - Interfaz de comando lista
+[✓] wsproxy.py - Integración completada
+[✓] test_user_system.py - Script de prueba incluido
+[✓] README.md - Documentación disponible
+[✓] QUICKSTART.py - Guía rápida disponible
+
+[✓] Preservación de funcionalidad existente
+[✓] Backward compatible con sistema anterior
+[✓] Thread-safe para concurrencia
+[✓] Logging detallado de conexiones
+[✓] Validación de HWID funcional
+
+
+🔒 CARACTERÍSTICAS DE SEGURIDAD:
+═══════════════════════════════════════════════════════════════════════════
+
+✓ Contraseñas: Hash SHA256 (no reversibles)
+✓ HWID: Validación exacta de coincidencia
+✓ Threading: Locks para acceso sincronizado
+✓ Auditoría: Registro de cada intento de autenticación
+✓ Estados: Usuarios pueden ser activados/desactivados
+✓ Conexiones: Contador de intentos de conexión por usuario
+
+
+📝 PRÓXIMAS MEJORAS (OPCIONALES):
+═══════════════════════════════════════════════════════════════════════════
+
+[ ] Múltiples HWID por usuario
+[ ] Historial de conexiones detallado
+[ ] Límites de tasa de conexión (rate limiting)
+[ ] Expiración de sesiones
+[ ] Encriptación de base de datos
+[ ] API REST para gestión remota
+[ ] Dashboard web de administración
+
+
+═════════════════════════════════════════════════════════════════════════════
+
+🎯 RESUMEN:
+
+El sistema de gestión de usuarios con validación HWID está completamente
+integrado en el proxy wsproxy.py sin afectar la funcionalidad existente.
+
+Puedes:
+  ✓ Crear usuarios con o sin HWID
+  ✓ Validar conexiones usando contraseña + HWID
+  ✓ Mantener backward compatibility con sistema antiguo
+  ✓ Auditar todas las conexiones
+  ✓ Gestionar usuarios desde CLI
+
+El sistema está listo para producción. Comienza creando tu primer usuario:
+
+    python3 user_cli.py create admin micontraseña --hwid "MI-HWID-001"
+
+═════════════════════════════════════════════════════════════════════════════

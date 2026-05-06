@@ -1,0 +1,259 @@
+cat > /bin/demo_cleaner << 'EOF'
+#!/bin/bash
+# demo_cleaner - Elimina demos expirados
+# Mismo flujo para SSH, HWID y TOKEN: Bloquear -> Desconectar -> Borrar
+
+TEMP_DB="/etc/SSHPlus/temp_users.db"
+LOCK_FILE="/tmp/demo_cleaner.lock"
+
+[ -f "$LOCK_FILE" ] && exit 0
+touch "$LOCK_FILE"
+
+[ ! -f "$TEMP_DB" ] && { rm -f "$LOCK_FILE"; exit 0; }
+[ ! -s "$TEMP_DB" ] && { rm -f "$LOCK_FILE"; exit 0; }
+
+ahora=$(date +%s)
+
+while IFS='|' read -r nombre modo fecha_exp; do
+    [[ -z "$nombre" ]] && continue
+    
+    exp_seg=$(date -d "$fecha_exp" +%s 2>/dev/null)
+    [ -z "$exp_seg" ] && continue
+    
+    if [ "$ahora" -ge "$exp_seg" ]; then
+        
+        echo "[$(date '+%H:%M:%S')] Demo expirado: $nombre ($modo)" >> /tmp/demo_cleaner.log
+        
+        case "$modo" in
+            SSH)
+                if grep -q "^$nombre " /root/usuarios.db 2>/dev/null; then
+                    # Verificar si fue renovado
+                    if grep -q "^$nombre:" /etc/passwd 2>/dev/null; then
+                        exp_actual=$(chage -l "$nombre" 2>/dev/null | grep "Account expires" | cut -d: -f2- | xargs)
+                        if [ -n "$exp_actual" ] && [ "$exp_actual" != "never" ]; then
+                            exp_actual_sec=$(date -d "$exp_actual" +%s 2>/dev/null)
+                            if [ -n "$exp_actual_sec" ] && [ "$exp_actual_sec" -gt "$((exp_seg + 60))" ]; then
+                                echo "[$(date '+%H:%M:%S')] $nombre fue renovado, se conserva" >> /tmp/demo_cleaner.log
+                                sed -i "/^$nombre|SSH|/d" "$TEMP_DB"
+                                continue
+                            fi
+                        fi
+                    fi
+                    
+                    # PASO 1: BLOQUEAR (desconecta al usuario)
+                    echo "[$(date '+%H:%M:%S')] BLOQUEANDO $nombre..." >> /tmp/demo_cleaner.log
+                    /bin/bloquear_silencioso "$nombre" >> /tmp/demo_cleaner.log 2>&1
+                    sleep 2
+                    
+                    # PASO 2: BORRAR (elimina todo)
+                    echo "[$(date '+%H:%M:%S')] BORRANDO $nombre..." >> /tmp/demo_cleaner.log
+                    /bin/remover_silencioso "$nombre" >> /tmp/demo_cleaner.log 2>&1
+                    sleep 1
+                    
+                    # PASO 3: Verificar
+                    if grep -q "^$nombre " /root/usuarios.db 2>/dev/null; then
+                        grep -v "^$nombre " /root/usuarios.db > /tmp/usuarios_temp
+                        mv /tmp/usuarios_temp /root/usuarios.db
+                        pkill -9 -u "$nombre" 2>/dev/null
+                        userdel -rf "$nombre" 2>/dev/null
+                        rm -f "/etc/SSHPlus/senha/$nombre"
+                    fi
+                fi
+                ;;
+                
+            HWID)
+                if grep -q "^$nombre|" /etc/SSHPlus/hwid.db 2>/dev/null; then
+                    linea=$(grep "^$nombre|" /etc/SSHPlus/hwid.db)
+                    hwid=$(echo "$linea" | cut -d'|' -f2)
+                    
+                    # Verificar si fue renovado
+                    exp_db=$(echo "$linea" | cut -d'|' -f3)
+                    exp_db_sec=$(date -d "$exp_db" +%s 2>/dev/null)
+                    if [ -n "$exp_db_sec" ] && [ "$exp_db_sec" -gt "$((exp_seg + 60))" ]; then
+                        echo "[$(date '+%H:%M:%S')] $nombre (HWID) renovado, se conserva" >> /tmp/demo_cleaner.log
+                        sed -i "/^$nombre|HWID|/d" "$TEMP_DB"
+                        continue
+                    fi
+                    
+                    echo "[$(date '+%H:%M:%S')] Procesando HWID: $nombre -> hwid=$hwid" >> /tmp/demo_cleaner.log
+                    
+                    # PASO 1: BLOQUEAR al usuario Linux (el hwid ES el usuario)
+                    echo "[$(date '+%H:%M:%S')] BLOQUEANDO $hwid..." >> /tmp/demo_cleaner.log
+                    /bin/bloquear_silencioso "$hwid" >> /tmp/demo_cleaner.log 2>&1
+                    sleep 2
+                    
+                    # PASO 2: BORRAR al usuario Linux
+                    echo "[$(date '+%H:%M:%S')] BORRANDO $hwid..." >> /tmp/demo_cleaner.log
+                    /bin/remover_silencioso "$hwid" >> /tmp/demo_cleaner.log 2>&1
+                    sleep 1
+                    
+                    # PASO 3: Verificar que se borró del sistema
+                    if grep -q "^$hwid:" /etc/passwd 2>/dev/null; then
+                        echo "[$(date '+%H:%M:%S')] Forzando borrado de $hwid" >> /tmp/demo_cleaner.log
+                        pkill -9 -u "$hwid" 2>/dev/null
+                        skill -KILL -u "$hwid" 2>/dev/null
+                        sleep 1
+                        userdel -rf "$hwid" 2>/dev/null
+                        sed -i "/^$hwid:/d" /etc/passwd 2>/dev/null
+                        sed -i "/^$hwid:/d" /etc/shadow 2>/dev/null
+                        sed -i "/^$hwid:/d" /etc/group 2>/dev/null
+                        sed -i "/^$hwid:/d" /etc/gshadow 2>/dev/null
+                    fi
+                    
+                    # PASO 4: Borrar de hwid.db
+                    grep -v "^$nombre|" /etc/SSHPlus/hwid.db > /tmp/hwid_temp
+                    mv /tmp/hwid_temp /etc/SSHPlus/hwid.db
+                    
+                    # PASO 5: Verificacion final
+                    if grep -q "^$hwid:" /etc/passwd 2>/dev/null || grep -q "^$hwid:" /etc/shadow 2>/dev/null; then
+                        echo "[$(date '+%H:%M:%S')] ERROR: $hwid sigue en el sistema!" >> /tmp/demo_cleaner.log
+                    else
+                        echo "[$(date '+%H:%M:%S')] HWID $nombre ($hwid) ELIMINADO COMPLETAMENTE" >> /tmp/demo_cleaner.log
+                    fi
+                fi
+                ;;
+                
+            TOKEN)
+                if grep -q "^$nombre|" /etc/SSHPlus/token.db 2>/dev/null; then
+                    echo "[$(date '+%H:%M:%S')] Eliminando TOKEN $nombre..." >> /tmp/demo_cleaner.log
+                    grep -v "^$nombre|" /etc/SSHPlus/token.db > /tmp/token_temp
+                    mv /tmp/token_temp /etc/SSHPlus/token.db
+                    echo "[$(date '+%H:%M:%S')] TOKEN $nombre ELIMINADO" >> /tmp/demo_cleaner.log
+                fi
+                ;;
+        esac
+        
+        # Quitar de temp_db
+        sed -i "/^$nombre|$modo|/d" "$TEMP_DB"
+    fi
+done < "$TEMP_DB"
+
+rm -f "$LOCK_FILE"
+EOF
+
+chmod +x /bin/demo_cleaner
+
+# Actualizar remover_silencioso para que funcione bien con HWID
+cat > /bin/remover_silencioso << 'EOF'
+#!/bin/bash
+# remover_silencioso - Borra usuario sin preguntar (limpieza profunda)
+# Funciona con SSH y HWID
+
+user="$1"
+[ -z "$user" ] && exit 1
+
+echo "[$(date '+%H:%M:%S')] Removiendo $user..." >> /tmp/demo_cleaner.log
+
+# 1. DESCONECTAR
+# Dropbear
+pids=$(grep "Password auth succeeded for '$user'" /var/log/auth.log 2>/dev/null | grep -oP 'dropbear\[\K[0-9]+' | sort -u)
+for pid in $pids; do
+    kill -9 "$pid" 2>/dev/null
+done
+
+# SSH
+ps aux 2>/dev/null | grep -v grep | grep "sshd.*$user" | awk '{print $2}' | while read pid; do
+    kill -9 "$pid" 2>/dev/null
+done
+
+# OpenVPN
+ps aux 2>/dev/null | grep -v grep | grep "openvpn.*$user" | awk '{print $2}' | while read pid; do
+    kill -9 "$pid" 2>/dev/null
+done
+
+# Matar TODO
+pkill -9 -u "$user" 2>/dev/null
+skill -KILL -u "$user" 2>/dev/null
+sleep 2
+
+# Segunda pasada
+pkill -9 -u "$user" 2>/dev/null
+skill -KILL -u "$user" 2>/dev/null
+sleep 1
+
+# 2. BORRAR USUARIO DEL SISTEMA
+userdel "$user" 2>/dev/null
+userdel -f "$user" 2>/dev/null
+userdel -rf "$user" 2>/dev/null
+
+# Limpieza manual
+sed -i "/^$user:/d" /etc/passwd 2>/dev/null
+sed -i "/^$user:/d" /etc/shadow 2>/dev/null
+sed -i "/^$user:/d" /etc/group 2>/dev/null
+sed -i "/^$user:/d" /etc/gshadow 2>/dev/null
+rm -rf "/home/$user" 2>/dev/null
+rm -f "/var/mail/$user" 2>/dev/null
+rm -f "/var/spool/mail/$user" 2>/dev/null
+
+# 3. BORRAR DE BASES DE DATOS
+grep -v "^$user " /root/usuarios.db > /tmp/usuarios_temp 2>/dev/null
+mv /tmp/usuarios_temp /root/usuarios.db 2>/dev/null
+
+grep -v "^$user$" /etc/SSHPlus/locked_users.db > /tmp/locked_temp 2>/dev/null
+mv /tmp/locked_temp /etc/SSHPlus/locked_users.db 2>/dev/null
+
+rm -f "/etc/SSHPlus/senha/$user"
+sed -i "/^$user|/d" /etc/SSHPlus/temp_users.db 2>/dev/null
+
+echo "[$(date '+%H:%M:%S')] $user eliminado completamente" >> /tmp/demo_cleaner.log
+exit 0
+EOF
+
+chmod +x /bin/remover_silencioso
+
+# Actualizar bloquear_silencioso
+cat > /bin/bloquear_silencioso << 'EOF'
+#!/bin/bash
+# bloquear_silencioso - Bloquea y desconecta un usuario sin preguntar
+
+user="$1"
+[ -z "$user" ] && exit 1
+
+LOCKED_DB="/etc/SSHPlus/locked_users.db"
+touch "$LOCKED_DB"
+
+# Agregar a lista de bloqueados
+if ! grep -q "^$user$" "$LOCKED_DB"; then
+    echo "$user" >> "$LOCKED_DB"
+    echo "[$(date '+%H:%M:%S')] $user agregado a locked_users.db" >> /tmp/demo_cleaner.log
+fi
+
+# Desconectar - Dropbear
+pids=$(grep "Password auth succeeded for '$user'" /var/log/auth.log 2>/dev/null | grep -oP 'dropbear\[\K[0-9]+' | sort -u)
+for pid in $pids; do
+    kill -9 "$pid" 2>/dev/null
+done
+
+# Desconectar - SSH
+ps aux 2>/dev/null | grep -v grep | grep "sshd.*$user" | awk '{print $2}' | while read pid; do
+    kill -9 "$pid" 2>/dev/null
+done
+
+# Desconectar - OpenVPN  
+ps aux 2>/dev/null | grep -v grep | grep "openvpn.*$user" | awk '{print $2}' | while read pid; do
+    kill -9 "$pid" 2>/dev/null
+done
+
+# Desconectar todo
+pkill -9 -u "$user" 2>/dev/null
+skill -KILL -u "$user" 2>/dev/null
+sleep 1
+
+# Segunda pasada para asegurar
+pkill -9 -u "$user" 2>/dev/null
+skill -KILL -u "$user" 2>/dev/null
+
+# Bloquear cuenta (no puede hacer login de nuevo)
+usermod -L "$user" 2>/dev/null
+passwd -l "$user" 2>/dev/null
+chage -E 0 "$user" 2>/dev/null
+
+echo "[$(date '+%H:%M:%S')] $user bloqueado y desconectado" >> /tmp/demo_cleaner.log
+exit 0
+EOF
+
+chmod +x /bin/bloquear_silencioso
+
+echo "✅ demo_cleaner actualizado - Mismo flujo SSH/HWID: BLOQUEAR -> BORRAR"
+echo "✅ remover_silencioso actualizado"
+echo "✅ bloquear_silencioso actualizado"

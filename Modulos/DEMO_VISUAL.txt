@@ -1,0 +1,205 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                     DEMOSTRACIÓN VISUAL DEL SISTEMA                        ║
+║                 (Cómo se ve visualmente cada comando)                      ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMANDO 1: CREAR UN USUARIO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+$ python3 user_cli.py create admin admin123 --hwid "ABC123DEF456"
+
+    ╔═══════════════════════════════════════════════════════════╗
+    ║   SSHPLUS - User Management System with HWID Support      ║
+    ╚═══════════════════════════════════════════════════════════╝
+
+    [+] Usuario 'admin' creado exitosamente
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMANDO 2: LISTAR USUARIOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+$ python3 user_cli.py list
+
+    ╔═══════════════════════════════════════════════════════════╗
+    ║   SSHPLUS - User Management System with HWID Support      ║
+    ╚═══════════════════════════════════════════════════════════╝
+
+    [+] USUARIOS REGISTRADOS:
+
+    Usuario               HWID                 Conexiones      Último Login
+    ────────────────────────────────────────────────────────────────────────
+    ✓ admin               REGISTRADO           0               Nunca
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMANDO 3: VER INFORMACIÓN DEL USUARIO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+$ python3 user_cli.py info admin
+
+    ╔═══════════════════════════════════════════════════════════╗
+    ║   SSHPLUS - User Management System with HWID Support      ║
+    ╚═══════════════════════════════════════════════════════════╝
+
+    [+] INFORMACIÓN DEL USUARIO:
+
+        Usuario:        admin
+        HWID:           ABC123DEF456
+        Estado:         Activo
+        Conexiones:     0
+        Creado:         2024-05-01T21:31:45.123456
+        Último Login:   Nunca
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMANDO 4: CREAR OTRO USUARIO (sin HWID)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+$ python3 user_cli.py create user1 password123
+
+    ╔═══════════════════════════════════════════════════════════╗
+    ║   SSHPLUS - User Management System with HWID Support      ║
+    ╚═══════════════════════════════════════════════════════════╝
+
+    [+] Usuario 'user1' creado exitosamente
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMANDO 5: LISTAR USUARIOS (actualizado)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+$ python3 user_cli.py list
+
+    ╔═══════════════════════════════════════════════════════════╗
+    ║   SSHPLUS - User Management System with HWID Support      ║
+    ╚═══════════════════════════════════════════════════════════╝
+
+    [+] USUARIOS REGISTRADOS:
+
+    Usuario               HWID                 Conexiones      Último Login
+    ────────────────────────────────────────────────────────────────────────
+    ✓ admin               REGISTRADO           0               Nunca
+    ✓ user1               NO REGISTRADO        0               Nunca
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMANDO 6: REGISTRAR HWID A USUARIO EXISTENTE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+$ python3 user_cli.py register-hwid user1 "LAPTOP-XYZ789"
+
+    ╔═══════════════════════════════════════════════════════════╗
+    ║   SSHPLUS - User Management System with HWID Support      ║
+    ╚═══════════════════════════════════════════════════════════╝
+
+    [+] HWID registrado para 'user1'
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMANDO 7: LISTAR USUARIOS (actualizado con HWID)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+$ python3 user_cli.py list
+
+    ╔═══════════════════════════════════════════════════════════╗
+    ║   SSHPLUS - User Management System with HWID Support      ║
+    ╚═══════════════════════════════════════════════════════════╝
+
+    [+] USUARIOS REGISTRADOS:
+
+    Usuario               HWID                 Conexiones      Último Login
+    ────────────────────────────────────────────────────────────────────────
+    ✓ admin               REGISTRADO           0               Nunca
+    ✓ user1               REGISTRADO           0               Nunca
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMANDO 8: DESACTIVAR USUARIO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+$ python3 user_cli.py toggle deactivate user1
+
+    ╔═══════════════════════════════════════════════════════════╗
+    ║   SSHPLUS - User Management System with HWID Support      ║
+    ╚═══════════════════════════════════════════════════════════╝
+
+    [+] Usuario 'user1' desactivado
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMANDO 9: LISTAR USUARIOS (con usuario desactivado)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+$ python3 user_cli.py list
+
+    ╔═══════════════════════════════════════════════════════════╗
+    ║   SSHPLUS - User Management System with HWID Support      ║
+    ╚═══════════════════════════════════════════════════════════╝
+
+    [+] USUARIOS REGISTRADOS:
+
+    Usuario               HWID                 Conexiones      Último Login
+    ────────────────────────────────────────────────────────────────────────
+    ✓ admin               REGISTRADO           0               Nunca
+    ✗ user1               REGISTRADO           0               Nunca      ← INACTIVO
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMANDO 10: ACTIVAR USUARIO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+$ python3 user_cli.py toggle activate user1
+
+    ╔═══════════════════════════════════════════════════════════╗
+    ║   SSHPLUS - User Management System with HWID Support      ║
+    ╚═══════════════════════════════════════════════════════════╝
+
+    [+] Usuario 'user1' activado
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMANDO 11: ELIMINAR USUARIO (con confirmación)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+$ python3 user_cli.py delete user1
+
+    ╔═══════════════════════════════════════════════════════════╗
+    ║   SSHPLUS - User Management System with HWID Support      ║
+    ╚═══════════════════════════════════════════════════════════╝
+
+    ¿Estás seguro de que quieres eliminar a 'user1'? (s/n): s
+    [+] Usuario 'user1' eliminado
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMANDO 12: LISTAR USUARIOS (final)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+$ python3 user_cli.py list
+
+    ╔═══════════════════════════════════════════════════════════╗
+    ║   SSHPLUS - User Management System with HWID Support      ║
+    ╚═══════════════════════════════════════════════════════════╝
+
+    [+] USUARIOS REGISTRADOS:
+
+    Usuario               HWID                 Conexiones      Último Login
+    ────────────────────────────────────────────────────────────────────────
+    ✓ admin               REGISTRADO           0               Nunca
+
+
+═════════════════════════════════════════════════════════════════════════════
+
+✨ RESUMEN VISUAL:
+
+  ✓ Interface clara y limpia
+  ✓ Colores con ✓ y ✗ para estados
+  ✓ Información organizada en tablas
+  ✓ Confirmaciones interactivas
+  ✓ Mensajes de éxito/error claros
+  ✓ Datos actualizados en tiempo real
+
+═════════════════════════════════════════════════════════════════════════════

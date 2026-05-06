@@ -1,0 +1,172 @@
+cat > /bin/editar_hwid << 'EOF'
+#!/bin/bash
+# editar_hwid - Cambiar HWID de un usuario manteniendo sus datos
+
+DB_HWID="/etc/SSHPlus/hwid.db"
+
+clear
+echo "=============================================="
+echo "         EDITAR HWID DE USUARIO"
+echo "=============================================="
+
+if [ ! -f "$DB_HWID" ] || [ ! -s "$DB_HWID" ]; then
+    echo ""
+    echo "  No hay usuarios HWID registrados"
+    echo ""
+    echo -n "  ENTER para continuar..."; read
+    exit 0
+fi
+
+# Listar usuarios
+echo ""
+echo "  USUARIOS HWID:"
+echo "  ----------------------------------------"
+echo "  ID | NOMBRE | HWID | EXPIRA"
+echo "  ---|--------|------|-------"
+
+i=1
+while IFS='|' read -r nombre hwid exp; do
+    [[ -z "$nombre" ]] && continue
+    printf "  %-3s| %-7s| %-33s| %s\n" "$i" "$nombre" "$hwid" "$exp"
+    i=$((i+1))
+done < "$DB_HWID"
+
+echo "  ----------------------------------------"
+echo ""
+echo -n "  ID del usuario a editar (0=cancelar): "
+read id
+
+if [[ -z "$id" ]] || [[ "$id" == "0" ]]; then
+    echo "  Cancelado."
+    exit 0
+fi
+
+if [[ ! "$id" =~ ^[0-9]+$ ]]; then
+    echo "  ERROR: ID invalido"
+    echo -n "  ENTER para continuar..."; read
+    exit 1
+fi
+
+# Obtener datos actuales
+linea=$(sed -n "${id}p" "$DB_HWID")
+nombre=$(echo "$linea" | cut -d'|' -f1)
+hwid_actual=$(echo "$linea" | cut -d'|' -f2)
+exp=$(echo "$linea" | cut -d'|' -f3)
+
+if [[ -z "$nombre" ]] || [[ -z "$hwid_actual" ]]; then
+    echo "  ERROR: ID invalido o usuario no encontrado"
+    echo -n "  ENTER para continuar..."; read
+    exit 1
+fi
+
+echo ""
+echo "  =========================================="
+echo "  DATOS ACTUALES:"
+echo "    Nombre: $nombre"
+echo "    HWID actual: $hwid_actual"
+echo "    Expiracion: $exp"
+echo "  =========================================="
+echo ""
+
+echo -n "  Nuevo HWID: "
+read hwid_nuevo
+hwid_nuevo=$(echo "$hwid_nuevo" | tr -d ' ')
+
+if [[ -z "$hwid_nuevo" ]]; then
+    echo "  Cancelado."
+    exit 0
+fi
+
+# Verificar que no exista ya
+if grep -q "|$hwid_nuevo|" "$DB_HWID" 2>/dev/null; then
+    echo ""
+    echo "  ERROR: El HWID '$hwid_nuevo' ya esta registrado en otro usuario"
+    echo -n "  ENTER para continuar..."; read
+    exit 1
+fi
+
+# Verificar que no sea igual al actual
+if [[ "$hwid_nuevo" == "$hwid_actual" ]]; then
+    echo ""
+    echo "  El HWID es el mismo, no hay cambios"
+    echo -n "  ENTER para continuar..."; read
+    exit 0
+fi
+
+echo ""
+echo -n "  Confirmar cambio de HWID? (s/n): "
+read confirmar
+
+if [[ ! "$confirmar" =~ ^[Ss]$ ]]; then
+    echo "  Cancelado."
+    exit 0
+fi
+
+echo ""
+echo "  Aplicando cambios..."
+
+# 1. Actualizar en hwid.db
+sed -i "${id}s|${hwid_actual}|${hwid_nuevo}|" "$DB_HWID"
+
+# 2. Si el HWID antiguo existe como usuario Linux, renombrarlo
+if grep -q "^$hwid_actual:" /etc/passwd 2>/dev/null; then
+    # Matar procesos del HWID antiguo
+    pkill -9 -u "$hwid_actual" 2>/dev/null
+    sleep 1
+    
+    # Cambiar nombre de usuario
+    usermod -l "$hwid_nuevo" "$hwid_actual" 2>/dev/null
+    
+    if [ $? -eq 0 ]; then
+        echo "    Usuario Linux renombrado: $hwid_actual -> $hwid_nuevo"
+        
+        # Actualizar contraseña (nuevo HWID = nueva contraseña)
+        echo "$hwid_nuevo:$hwid_nuevo" | chpasswd 2>/dev/null
+        echo "$hwid_nuevo" > "/etc/SSHPlus/senha/$hwid_nuevo"
+        rm -f "/etc/SSHPlus/senha/$hwid_actual"
+        
+        # Actualizar en locked_users si estaba bloqueado
+        if grep -qxF "$hwid_actual" /etc/SSHPlus/locked_users.db 2>/dev/null; then
+            sed -i "s/^$hwid_actual$/$hwid_nuevo/" /etc/SSHPlus/locked_users.db
+        fi
+        
+        # Actualizar en temp_users si existe
+        if grep -q "^.*|$hwid_actual|" /etc/SSHPlus/temp_users.db 2>/dev/null; then
+            sed -i "s/|$hwid_actual|/|$hwid_nuevo|/" /etc/SSHPlus/temp_users.db
+        fi
+        
+        echo "    Contraseña actualizada"
+    else
+        echo "    ADVERTENCIA: No se pudo renombrar usuario Linux"
+        echo "    Se creara uno nuevo..."
+        
+        # Borrar el viejo
+        userdel -f "$hwid_actual" 2>/dev/null
+        
+        # Crear el nuevo
+        pass_crypt=$(perl -e 'print crypt($ARGV[0], "salt")' "$hwid_nuevo" 2>/dev/null)
+        if [ -n "$pass_crypt" ]; then
+            useradd -e "$exp" -M -s /bin/false -p "$pass_crypt" "$hwid_nuevo" 2>/dev/null
+        else
+            useradd -e "$exp" -M -s /bin/false "$hwid_nuevo" 2>/dev/null
+            echo "$hwid_nuevo:$hwid_nuevo" | chpasswd 2>/dev/null
+        fi
+        echo "$hwid_nuevo" > "/etc/SSHPlus/senha/$hwid_nuevo"
+    fi
+fi
+
+echo ""
+echo "  =========================================="
+echo "  HWID EDITADO EXITOSAMENTE"
+echo "    Nombre: $nombre"
+echo "    HWID anterior: $hwid_actual"
+echo "    HWID nuevo: $hwid_nuevo"
+echo "    Expiracion: $exp (sin cambios)"
+echo "  =========================================="
+echo ""
+echo -n "  ENTER para continuar..."; read
+exit 0
+EOF
+
+chmod +x /bin/editar_hwid
+echo "✅ editar_hwid corregido"

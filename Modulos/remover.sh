@@ -1,0 +1,181 @@
+cat > /root/sshplus-mirror/Modulos/remover << 'EOF'
+#!/bin/bash
+# remover - Version UNIVERSAL
+# Funciona con: SSH directo, Dropbear, ws-epro, cualquier puerto
+
+DB_SSH="/root/usuarios.db"
+SENHA_DIR="/etc/SSHPlus/senha"
+AUTH_LOG="/var/log/auth.log"
+
+# ================================================================
+# DETECTAR CONEXION ACTIVA DE UN USUARIO (UNIVERSAL)
+# ================================================================
+
+detectar_pid_usuario() {
+    local user="$1"
+    
+    # METODO 1: Buscar en dropbear (por logs - el mas confiable)
+    local pid=$(grep "Password auth succeeded for '$user'" "$AUTH_LOG" 2>/dev/null | tail -1 | grep -oP 'dropbear\[\K[0-9]+')
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+        echo "$pid"
+        return
+    fi
+    
+    # METODO 2: Buscar en sshd (SSH directo)
+    pid=$(ps aux | grep "[s]shd" | grep "$user" | grep -v "priv" | awk '{print $2}')
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+        echo "$pid"
+        return
+    fi
+    
+    # METODO 3: Buscar por conexiones de red (cualquier puerto)
+    local net_pids=$(ss -tunp 2>/dev/null | grep ESTAB | grep -v LISTEN | grep -oP 'pid=\K[0-9]+')
+    for pid in $net_pids; do
+        if ps -p "$pid" -o user= 2>/dev/null | grep -q "$user"; then
+            echo "$pid"
+            return
+        fi
+    done
+    
+    # METODO 4: Buscar por procesos del usuario
+    pid=$(pgrep -u "$user" 2>/dev/null | head -1)
+    if [[ -n "$pid" ]]; then
+        echo "$pid"
+        return
+    fi
+    
+    echo ""
+}
+
+# ================================================================
+# LISTAR USUARIOS CON ESTADO DE CONEXION
+# ================================================================
+
+listar_usuarios() {
+    echo "=========================================="
+    echo "  USUARIOS SSH"
+    echo "=========================================="
+    if [[ ! -s "$DB_SSH" ]]; then
+        echo "  No hay usuarios registrados"
+        return 1
+    fi
+    
+    echo "  ID | USUARIO | LIMITE | CONECTADO"
+    echo "  ---|---------|--------|----------"
+    local i=1
+    while IFS=' ' read -r user limite; do
+        local estado="NO"
+        local pid=$(detectar_pid_usuario "$user")
+        if [[ -n "$pid" ]]; then
+            estado="SI (PID $pid)"
+        fi
+        echo "  $i | $user | $limite | $estado"
+        i=$((i+1))
+    done < "$DB_SSH"
+    echo "=========================================="
+}
+
+# ================================================================
+# DESCONECTAR USUARIO (UNIVERSAL)
+# ================================================================
+
+desconectar_usuario() {
+    local user="$1"
+    echo ""
+    echo "  Desconectando $user..."
+    
+    # Obtener el PID de la conexion activa
+    local target_pid=$(detectar_pid_usuario "$user")
+    
+    if [[ -n "$target_pid" ]]; then
+        echo "    Proceso encontrado: PID $target_pid"
+        echo "    Matando proceso..."
+        kill -9 "$target_pid" 2>/dev/null
+        
+        # Tambien matar procesos hijos si existen
+        local children=$(pgrep -P "$target_pid" 2>/dev/null)
+        for child in $children; do
+            kill -9 "$child" 2>/dev/null
+        done
+        
+        sleep 1
+        echo "    Conexion terminada"
+    else
+        echo "    No se encontro conexion activa para $user"
+    fi
+    
+    # Limpiar cualquier proceso remanente
+    pkill -9 -u "$user" 2>/dev/null
+}
+
+# ================================================================
+# ELIMINAR USUARIO DEL SISTEMA
+# ================================================================
+
+eliminar_usuario_sistema() {
+    local user="$1"
+    echo "  Eliminando usuario $user del sistema..."
+    passwd -l "$user" 2>/dev/null
+    userdel -f "$user" 2>/dev/null
+    echo "  Usuario eliminado"
+}
+
+limpiar_archivos() {
+    local user="$1"
+    local id="$2"
+    sed -i "${id}d" "$DB_SSH" 2>/dev/null
+    rm -f "$SENHA_DIR/$user" 2>/dev/null
+    rm -rf "/home/$user" 2>/dev/null
+    echo "  Archivos limpiados"
+}
+
+# ================================================================
+# MAIN
+# ================================================================
+
+borrar_usuario() {
+    listar_usuarios
+    if [[ $? -ne 0 ]]; then
+        echo ""
+        read -p "  ENTER para continuar..."
+        return
+    fi
+    
+    echo ""
+    read -p "  ID del usuario a borrar (0=cancelar): " id
+    [[ -z "$id" || "$id" == "0" ]] && echo "  Cancelado" && return
+    
+    local user=$(sed -n "${id}p" "$DB_SSH" | cut -d' ' -f1)
+    if [[ -z "$user" ]]; then
+        echo "  ERROR: ID invalido"
+        sleep 2
+        return
+    fi
+    
+    echo ""
+    echo "  Usuario: $user"
+    read -p "  Confirmar borrado (s/N): " confirm
+    [[ ! "$confirm" =~ ^[sS]$ ]] && echo "  Cancelado" && return
+    
+    echo ""
+    echo "  =========================================="
+    desconectar_usuario "$user"
+    eliminar_usuario_sistema "$user"
+    limpiar_archivos "$user" "$id"
+    echo "  =========================================="
+    echo ""
+    echo "  OK: Usuario $user eliminado"
+    read -p "  ENTER para continuar..."
+}
+
+borrar_usuario
+EOF
+
+chmod +x /root/sshplus-mirror/Modulos/remover
+
+# Instalar en todas las ubicaciones
+cp /root/sshplus-mirror/Modulos/remover /bin/remover
+cp /root/sshplus-mirror/Modulos/remover /usr/bin/remover
+cp /root/sshplus-mirror/Modulos/remover /usr/local/bin/remover
+
+echo "remover universal instalado"

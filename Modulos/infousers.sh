@@ -1,0 +1,177 @@
+cat > /bin/infousers << 'EOF'
+#!/bin/bash
+# infousers - Módulo de información de usuarios
+# Compatible con sistema SSHPlus (IDs dinámicos)
+# Versión sin colores - Muestra según modo actual
+
+clear
+
+MODO_ACTUAL="/etc/SSHPlus/modo_actual.cfg"
+database="/root/usuarios.db"
+
+# Detectar modo
+if [ -f "$MODO_ACTUAL" ]; then
+    modo=$(cat "$MODO_ACTUAL")
+else
+    modo="SSH"
+fi
+
+echo "=============================================="
+echo "  INFORMACION DE USUARIOS - MODO: $modo"
+echo "=============================================="
+echo ""
+printf "%-5s %-15s %-13s %-10s %-15s\n" "ID" "Usuario" "Password" "Limite" "Validez"
+echo "----------------------------------------------------------------------------"
+
+id=0
+total_usuarios=0
+
+case "$modo" in
+    SSH)
+        # Mostrar usuarios SSH desde /root/usuarios.db
+        if [ -f "$database" ]; then
+            while IFS=' ' read -r user limit; do
+                [[ -z "$user" ]] && continue
+                
+                # Verificar que existe en el sistema
+                if ! grep -q "^$user:" /etc/passwd; then
+                    continue
+                fi
+                
+                id=$((id + 1))
+                total_usuarios=$((total_usuarios + 1))
+                
+                # Obtener contraseña
+                if [[ -e "/etc/SSHPlus/senha/$user" ]]; then
+                    senha=$(cat "/etc/SSHPlus/senha/$user")
+                else
+                    senha="Null"
+                fi
+                
+                # Si no tiene límite definido
+                [[ -z "$limit" ]] && limit="1"
+                
+                # Obtener fecha de expiración
+                datauser=$(chage -l "$user" 2>/dev/null | grep -i "Account expires" | awk -F: '{print $2}' | sed 's/^[[:space:]]*//')
+                
+                if [[ -z "$datauser" ]] || [[ "$datauser" == "never" ]]; then
+                    data="Nunca"
+                else
+                    databr=$(date -d "$datauser" +"%Y%m%d" 2>/dev/null)
+                    hoje=$(date -d today +"%Y%m%d")
+                    
+                    if [ "$hoje" -ge "$databr" ] 2>/dev/null; then
+                        data="VENCIDO"
+                    else
+                        dias=$(( ($(date -ud "$datauser" +%s) - $(date -ud "$(date +%Y-%m-%d)" +%s)) / 86400 ))
+                        data="$dias Dias"
+                    fi
+                fi
+                
+                printf "[%02d]  %-15s %-13s %-10s %-15s\n" "$id" "$user" "$senha" "$limit" "$data"
+                
+            done < "$database"
+        fi
+        ;;
+        
+    HWID)
+        # Mostrar usuarios HWID
+        if [ -f "/etc/SSHPlus/hwid.db" ]; then
+            while IFS='|' read -r user hwid fecha; do
+                [[ -z "$user" ]] && continue
+                
+                id=$((id + 1))
+                total_usuarios=$((total_usuarios + 1))
+                
+                # HWID truncado para mostrar
+                hwid_short="${hwid:0:12}..."
+                
+                # Determinar validez
+                if [[ -z "$fecha" ]] || [[ "$fecha" == "never" ]]; then
+                    data="Nunca"
+                else
+                    databr=$(date -d "$fecha" +"%Y%m%d" 2>/dev/null)
+                    hoje=$(date -d today +"%Y%m%d")
+                    
+                    if [ "$hoje" -ge "$databr" ] 2>/dev/null; then
+                        data="VENCIDO"
+                    else
+                        dias=$(( ($(date -ud "$fecha" +%s) - $(date -ud "$(date +%Y-%m-%d)" +%s)) / 86400 ))
+                        data="$dias Dias"
+                    fi
+                fi
+                
+                printf "[%02d]  %-15s %-13s %-10s %-15s\n" "$id" "$user" "$hwid_short" "N/A" "$data"
+                
+            done < "/etc/SSHPlus/hwid.db"
+        fi
+        ;;
+        
+    TOKEN)
+        # Mostrar usuarios TOKEN
+        if [ -f "/etc/SSHPlus/token.db" ]; then
+            while IFS='|' read -r user token pass fecha; do
+                [[ -z "$user" ]] && continue
+                
+                id=$((id + 1))
+                total_usuarios=$((total_usuarios + 1))
+                
+                # Token truncado
+                token_short="${token:0:12}..."
+                
+                # Determinar validez
+                if [[ -z "$fecha" ]] || [[ "$fecha" == "never" ]]; then
+                    data="Nunca"
+                else
+                    databr=$(date -d "$fecha" +"%Y%m%d" 2>/dev/null)
+                    hoje=$(date -d today +"%Y%m%d")
+                    
+                    if [ "$hoje" -ge "$databr" ] 2>/dev/null; then
+                        data="VENCIDO"
+                    else
+                        dias=$(( ($(date -ud "$fecha" +%s) - $(date -ud "$(date +%Y-%m-%d)" +%s)) / 86400 ))
+                        data="$dias Dias"
+                    fi
+                fi
+                
+                printf "[%02d]  %-15s %-13s %-10s %-15s\n" "$id" "$user" "$token_short" "N/A" "$data"
+                
+            done < "/etc/SSHPlus/token.db"
+        fi
+        ;;
+esac
+
+echo "----------------------------------------------------------------------------"
+
+# Si no hay usuarios
+if [[ $total_usuarios -eq 0 ]]; then
+    echo "  No hay usuarios registrados en modo $modo"
+fi
+
+echo ""
+
+# Estadísticas
+_tuser=$total_usuarios
+
+# Contar online (SSH/Dropbear/OpenVPN)
+_ons=$(ps -x 2>/dev/null | grep sshd | grep -v root | grep priv | wc -l)
+[[ -e /etc/default/dropbear ]] && _drp=$(ps aux 2>/dev/null | grep dropbear | grep -v grep | wc -l) && _ondrp=$(($_drp - 1)) || _ondrp="0"
+[[ -e /etc/openvpn/openvpn-status.log ]] && _onop=$(grep -c "10.8.0" /etc/openvpn/openvpn-status.log 2>/dev/null) || _onop="0"
+_onli=$(($_ons + $_onop + $_ondrp))
+
+# Contar expirados
+[[ "$(cat /etc/SSHPlus/Exp 2>/dev/null)" != "" ]] && _expuser=$(cat /etc/SSHPlus/Exp) || _expuser="0"
+
+echo "=============================================="
+echo "  TOTAL USUARIOS: $_tuser"
+echo "  ONLINE: $_onli"
+echo "  EXPIRADOS: $_expuser"
+echo "  MODO ACTUAL: $modo"
+echo "=============================================="
+echo ""
+
+exit 0
+EOF
+
+chmod +x /bin/infousers
+echo "✅ infousers instalado correctamente"

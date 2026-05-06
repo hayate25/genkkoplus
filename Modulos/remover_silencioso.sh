@@ -1,0 +1,82 @@
+cat > /bin/remover_silencioso << 'EOF'
+#!/bin/bash
+# remover_silencioso - Borra usuario sin preguntar (limpieza profunda)
+
+user="$1"
+[ -z "$user" ] && exit 1
+
+echo "[$(date '+%H:%M:%S')] Removiendo $user..." >> /tmp/demo_cleaner.log
+
+# 1. DESCONECTAR - Buscar y matar todas las sesiones
+# Dropbear
+pids=$(grep "Password auth succeeded for '$user'" /var/log/auth.log 2>/dev/null | grep -oP 'dropbear\[\K[0-9]+' | sort -u)
+for pid in $pids; do
+    kill -9 "$pid" 2>/dev/null
+done
+
+# SSH
+ps aux 2>/dev/null | grep -v grep | grep "sshd.*$user" | awk '{print $2}' | while read pid; do
+    kill -9 "$pid" 2>/dev/null
+done
+
+# Matar TODO proceso del usuario
+pkill -9 -u "$user" 2>/dev/null
+skill -KILL -u "$user" 2>/dev/null
+sleep 2
+
+# Segunda pasada
+pkill -9 -u "$user" 2>/dev/null
+skill -KILL -u "$user" 2>/dev/null
+sleep 1
+
+# 2. BORRAR USUARIO DEL SISTEMA
+userdel "$user" 2>/dev/null
+userdel -f "$user" 2>/dev/null
+userdel -rf "$user" 2>/dev/null
+
+# Borrado manual si falló
+if grep -q "^$user:" /etc/passwd 2>/dev/null; then
+    sed -i "/^$user:/d" /etc/passwd
+fi
+if grep -q "^$user:" /etc/shadow 2>/dev/null; then
+    sed -i "/^$user:/d" /etc/shadow
+fi
+if grep -q "^$user:" /etc/group 2>/dev/null; then
+    sed -i "/^$user:/d" /etc/group
+fi
+if grep -q "^$user:" /etc/gshadow 2>/dev/null; then
+    sed -i "/^$user:/d" /etc/gshadow
+fi
+
+# Borrar directorios y archivos
+rm -rf "/home/$user" 2>/dev/null
+rm -f "/var/mail/$user" 2>/dev/null
+rm -f "/var/spool/mail/$user" 2>/dev/null
+
+# 3. BORRAR DE BASES DE DATOS SSHPLUS
+if grep -q "^$user " /root/usuarios.db 2>/dev/null; then
+    grep -v "^$user " /root/usuarios.db > /tmp/usuarios_temp
+    mv /tmp/usuarios_temp /root/usuarios.db
+fi
+
+if grep -q "^$user$" /etc/SSHPlus/locked_users.db 2>/dev/null; then
+    grep -v "^$user$" /etc/SSHPlus/locked_users.db > /tmp/locked_temp
+    mv /tmp/locked_temp /etc/SSHPlus/locked_users.db
+fi
+
+rm -f "/etc/SSHPlus/senha/$user"
+sed -i "/^$user|/d" /etc/SSHPlus/temp_users.db 2>/dev/null
+
+# 4. VERIFICACIÓN FINAL
+sleep 1
+if grep -q "^$user:" /etc/passwd 2>/dev/null; then
+    echo "[$(date '+%H:%M:%S')] ERROR: $user sigue en /etc/passwd" >> /tmp/demo_cleaner.log
+else
+    echo "[$(date '+%H:%M:%S')] $user eliminado completamente" >> /tmp/demo_cleaner.log
+fi
+
+exit 0
+EOF
+
+chmod +x /bin/remover_silencioso
+echo "✅ remover_silencioso instalado"

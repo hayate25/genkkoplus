@@ -1,0 +1,175 @@
+cat > /bin/expcleaner << 'EOF'
+#!/bin/bash
+# expcleaner - Mostrar y borrar usuarios expirados (CONFIRMACION)
+# Version sin colores
+# Usuario vence a las 21:30 del dia de expiracion
+
+clear
+
+HORA_CORTE=21
+MIN_CORTE=30
+datenow=$(date +%s)
+
+echo "=============================================="
+echo "         USUARIOS EXPIRADOS / VENCIDOS"
+echo "=============================================="
+echo "  Hora de corte: ${HORA_CORTE}:${MIN_CORTE}"
+echo "  (Usuario vence a las ${HORA_CORTE}:${MIN_CORTE} del dia indicado)"
+echo ""
+
+# Listas para almacenar vencidos
+vencidos_ssh=()
+vencidos_hwid=()
+vencidos_token=()
+
+echo "  BUSCANDO USUARIOS VENCIDOS..."
+echo ""
+printf "%-15s %-15s %s\n" "Usuario" "Fecha Exp." "Estado"
+echo "-------------------------------------------"
+
+# Buscar en /etc/passwd (SSH y HWID)
+for user in $(awk -F: '{print $1}' /etc/passwd); do
+    expdate=$(chage -l "$user" 2>/dev/null | awk -F: '/Account expires/{print $2}' | xargs)
+    
+    echo "$expdate" | grep -q never && continue
+    [[ -z "$expdate" ]] && continue
+    
+    datanormal=$(date -d"$expdate" '+%d/%m/%Y' 2>/dev/null)
+    exp_date_ymd=$(date -d"$expdate" '+%Y-%m-%d' 2>/dev/null)
+    expsec=$(date -d "$exp_date_ymd $HORA_CORTE:$MIN_CORTE:00" +%s 2>/dev/null)
+    
+    if [ -z "$expsec" ]; then
+        expsec=$(date +%s --date="$expdate" 2>/dev/null)
+    fi
+    
+    if [[ $datenow -ge $expsec ]]; then
+        printf "%-15s %-15s %s\n" "$user" "$datanormal" "VENCIDO"
+        vencidos_ssh+=("$user")
+    fi
+done
+
+# Buscar TOKEN vencidos
+if [ -f /etc/SSHPlus/token.db ] && [ -s /etc/SSHPlus/token.db ]; then
+    while IFS='|' read -r nombre token pass exp; do
+        [[ -z "$nombre" ]] && continue
+        expsec=$(date -d "$exp $HORA_CORTE:$MIN_CORTE:00" +%s 2>/dev/null)
+        if [[ -n "$expsec" ]] && [[ "$datenow" -ge "$expsec" ]]; then
+            printf "%-15s %-15s %s\n" "$nombre" "$exp" "VENCIDO (TOKEN)"
+            vencidos_token+=("$nombre")
+        fi
+    done < /etc/SSHPlus/token.db
+fi
+
+echo "-------------------------------------------"
+
+total_vencidos=$((${#vencidos_ssh[@]} + ${#vencidos_token[@]}))
+
+if [ $total_vencidos -eq 0 ]; then
+    echo ""
+    echo "  No hay usuarios vencidos"
+    echo ""
+    echo "=============================================="
+    echo ""
+    echo -n "ENTER para continuar..."; read
+    exit 0
+fi
+
+echo ""
+echo "  TOTAL USUARIOS VENCIDOS: $total_vencidos"
+echo ""
+echo "=============================================="
+echo ""
+echo "  ATENCION: Estos usuarios YA NO pueden conectarse"
+echo "  porque su fecha de expiracion ha pasado."
+echo ""
+echo "  Desea ELIMINARLOS permanentemente?"
+echo "  (Si no los borra, seguiran en el sistema pero sin acceso)"
+echo ""
+echo -n "  BORRAR todos los usuarios vencidos? (s/n): "
+read confirmar
+
+if [[ ! "$confirmar" =~ ^[Ss]$ ]]; then
+    echo ""
+    echo "  Cancelado. Los usuarios vencidos NO fueron borrados."
+    echo "  (Seguiran sin poder conectarse hasta que se renueven)"
+    echo ""
+    echo -n "ENTER para continuar..."; read
+    exit 0
+fi
+
+echo ""
+echo "  Eliminando usuarios vencidos..."
+echo ""
+
+remove_ovp() {
+    user="$1"
+    if [[ -e /etc/debian_version ]]; then
+        GROUPNAME=nogroup
+    fi
+    cd /etc/openvpn/easy-rsa/
+    ./easyrsa --batch revoke "$user" 2>/dev/null
+    ./easyrsa gen-crl 2>/dev/null
+    rm -rf pki/reqs/$user.req 2>/dev/null
+    rm -rf pki/private/$user.key 2>/dev/null
+    rm -rf pki/issued/$user.crt 2>/dev/null
+    rm -rf /etc/openvpn/crl.pem 2>/dev/null
+    cp /etc/openvpn/easy-rsa/pki/crl.pem /etc/openvpn/crl.pem 2>/dev/null
+    chown nobody:$GROUPNAME /etc/openvpn/crl.pem 2>/dev/null
+    rm -f $HOME/$user.ovpn 2>/dev/null
+    rm -f /var/www/html/openvpn/$user.zip 2>/dev/null
+}
+
+borrados=0
+
+# Borrar SSH y HWID vencidos
+for user in "${vencidos_ssh[@]}"; do
+    echo "    Borrando: $user"
+    
+    pkill -f "$user" 2>/dev/null
+    pkill -9 -u "$user" 2>/dev/null
+    userdel --force "$user" 2>/dev/null
+    sed -i "/^$user:/d" /etc/passwd 2>/dev/null
+    sed -i "/^$user:/d" /etc/shadow 2>/dev/null
+    
+    grep -v "^$user " /root/usuarios.db > /tmp/ph 2>/dev/null
+    cat /tmp/ph > /root/usuarios.db 2>/dev/null
+    rm -f /tmp/ph
+    
+    rm -f "/etc/SSHPlus/senha/$user" 2>/dev/null
+    
+    if grep -q "|$user|" /etc/SSHPlus/hwid.db 2>/dev/null; then
+        grep -v "|$user|" /etc/SSHPlus/hwid.db > /tmp/hwid_temp
+        mv /tmp/hwid_temp /etc/SSHPlus/hwid.db
+    fi
+    
+    sed -i "/^$user$/d" /etc/SSHPlus/locked_users.db 2>/dev/null
+    sed -i "/^.*|$user|/d" /etc/SSHPlus/temp_users.db 2>/dev/null
+    
+    if [[ -e /etc/openvpn/server.conf ]]; then
+        remove_ovp "$user"
+    fi
+    
+    borrados=$((borrados + 1))
+done
+
+# Borrar TOKEN vencidos
+for nombre in "${vencidos_token[@]}"; do
+    echo "    Borrando TOKEN: $nombre"
+    grep -v "^$nombre|" /etc/SSHPlus/token.db > /tmp/token_temp
+    mv /tmp/token_temp /etc/SSHPlus/token.db
+    borrados=$((borrados + 1))
+done
+
+echo ""
+echo "  Total borrados: $borrados"
+echo '0' > /etc/SSHPlus/Exp
+
+echo ""
+echo "=============================================="
+echo ""
+echo -n "ENTER para continuar..."; read
+exit 0
+EOF
+
+chmod +x /bin/expcleaner
+echo "✅ expcleaner actualizado - Pregunta antes de borrar"
