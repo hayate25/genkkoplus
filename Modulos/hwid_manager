@@ -1,4 +1,4 @@
-cat > /bin/hwid_manager << 'EOF'
+
 #!/bin/bash
 # hwid_manager - Gestion de usuarios HWID (identificador unico)
 # Sin colores - Usa misma logica de desconexion que SSH
@@ -458,6 +458,3 @@ while IFS='|' read -r nombre hwid exp; do
         echo "$hwid" > "/etc/SSHPlus/senha/$hwid"
     fi
 done < /etc/SSHPlus/hwid.db
-
-echo "✅ hwid_manager actualizado - Contraseña = HWID (igual que demo)"
-echo "✅ Usuarios existentes corregidos"
