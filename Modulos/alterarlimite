@@ -1,4 +1,4 @@
-cat > /bin/alterarlimite << 'EOF'
+
 #!/bin/bash
 # alterarlimite - Módulo para cambiar límite de conexiones simultáneas
 # Compatible con sistema SSHPlus (IDs dinámicos)
@@ -155,7 +155,3 @@ echo ""
 
 sleep 2
 exit 0
-EOF
-
-chmod +x /bin/alterarlimite
-echo "✅ alterarlimite instalado correctamente en /bin/alterarlimite"
