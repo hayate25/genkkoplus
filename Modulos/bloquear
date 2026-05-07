@@ -1,5 +1,5 @@
-cat > /bin/bloquear << 'EOF'
 #!/bin/bash
+#GENKKOSSH
 # bloquear - Bloquear/Desbloquear usuarios por ID
 # SOLO SE MODIFICO: listar_usuarios y get_user_by_id (filtro por modo)
 # TODO LO DEMAS ESTA IGUAL QUE CUANDO FUNCIONO
@@ -278,7 +278,3 @@ while true; do
         0) exit 0 ;;
     esac
 done
-EOF
-
-chmod +x /bin/bloquear
-echo "✅ bloquear - solo cambia lista por modo, logica intacta"
