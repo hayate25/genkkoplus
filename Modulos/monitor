@@ -1,5 +1,6 @@
-cat > /bin/sshmonitor << 'EOF'
+
 #!/bin/bash
+#GENKKOSSH
 # sshmonitor - Monitor de usuarios online simplificado
 # Version sin colores - Compatible con SSHPlus
 
@@ -129,7 +130,3 @@ while true; do
         *) continue ;;
     esac
 done
-EOF
-
-chmod +x /bin/sshmonitor
-echo "✅ sshmonitor instalado correctamente"
