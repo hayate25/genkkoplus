@@ -1,5 +1,5 @@
-cat > /bin/detalhes << 'EOF'
 #!/bin/bash
+#GENKKOSSH
 # detalhes - Informacion del VPS/Droplet
 # Version sin colores
 
@@ -94,7 +94,3 @@ echo -n "Presiona ENTER para volver al menu..."
 read
 
 exit 0
-EOF
-
-chmod +x /bin/detalhes
-echo "✅ detalhes actualizado con pausa"
