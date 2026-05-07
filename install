@@ -1,4 +1,3 @@
-cat > /tmp/genkkoplus/Install/install.sh << 'EOF'
 #!/bin/bash
 clear
 
@@ -160,6 +159,3 @@ echo "=============================================="
 echo ""
 
 exit 0
-EOF
-
-echo "✅ install.sh actualizado"
