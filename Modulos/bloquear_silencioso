@@ -1,5 +1,5 @@
-cat > /bin/bloquear_silencioso << 'EOF'
 #!/bin/bash
+#GENKKOSSH
 # bloquear_silencioso - Bloquea y desconecta un usuario sin preguntar
 
 user="$1"
@@ -28,7 +28,3 @@ pkill -9 -u "$user" 2>/dev/null
 skill -KILL -u "$user" 2>/dev/null
 
 exit 0
-EOF
-
-chmod +x /bin/bloquear_silencioso
-echo "✅ bloquear_silencioso instalado"
