@@ -1,4 +1,4 @@
-﻿cat > /bin/menu << 'ENDOFFILE'
+
 #!/bin/bash
 # menu - Menú principal de gestion de usuarios SSHPlus
 # Versión sin colores - Compatible con bots
@@ -169,7 +169,3 @@ while true; do
         0) exit 0 ;;
     esac
 done
-ENDOFFILE
-
-chmod +x /bin/menu
-echo "✅ Menú completo instalado correctamente"
