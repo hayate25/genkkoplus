@@ -1,5 +1,5 @@
-cat > /bin/creardemo << 'EOF'
 #!/bin/bash
+#GENKKOSSH
 # creardemo - Creador de usuarios demo/temporales
 # Compatible con SSH, HWID y TOKEN
 # Version sin colores
@@ -222,7 +222,3 @@ echo "=============================================="
 echo ""
 sleep 3
 exit 0
-EOF
-
-chmod +x /bin/creardemo
-echo "✅ creardemo instalado"
