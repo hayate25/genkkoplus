@@ -1,5 +1,6 @@
-cat > /bin/expcleaner << 'EOF'
+
 #!/bin/bash
+#GENKKOSSH
 # expcleaner - Mostrar y borrar usuarios expirados (CONFIRMACION)
 # Version sin colores
 # Usuario vence a las 21:30 del dia de expiracion
@@ -169,7 +170,3 @@ echo "=============================================="
 echo ""
 echo -n "ENTER para continuar..."; read
 exit 0
-EOF
-
-chmod +x /bin/expcleaner
-echo "✅ expcleaner actualizado - Pregunta antes de borrar"
