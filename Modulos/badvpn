@@ -1,25 +1,25 @@
 #!/bin/bash
 fun_badvpn() {
     clear
-    echo -e "\E[44;1;37m            MENU BADVPN             \E[0m"
+    echo "            MENU BADVPN             "
     echo ""
     if ps x | grep -w udpvpn | grep -v grep 1>/dev/null 2>/dev/null; then
-        echo -e "\033[1;33mPORTAS\033[1;37m: \033[1;32m$(netstat -nplt | grep 'badvpn-ud' | awk {'print $4'} | cut -d: -f2 | xargs)"
+        echo "PORTAS: $(netstat -nplt | grep 'badvpn-ud' | awk {'print $4'} | cut -d: -f2 | xargs)"
     else
         sleep 0.1
     fi
-    var_sks1=$(ps x | grep "udpvpn"|grep -v grep > /dev/null && echo -e "\033[1;32m◉ " || echo -e "\033[1;31m○ ")
+    var_sks1=$(ps x | grep "udpvpn"|grep -v grep > /dev/null && echo "◉ " || echo "○ ")
     echo ""
-    echo -e "\033[1;31m[\033[1;36m1\033[1;31m] \033[1;37m• \033[1;33mACTIVAR BADVPN(NORMAL 7300) $var_sks1 \033[0m"
-    echo -e "\033[1;31m[\033[1;36m2\033[1;31m] \033[1;37m• \033[1;33mABRIR PUERTO\033[0m"
-    echo -e "\033[1;31m[\033[1;36m0\033[1;31m] \033[1;37m• \033[1;33mVOLVER\033[0m"
+    echo "[1] • ACTIVAR BADVPN(NORMAL 7300) $var_sks1 "
+    echo "[2] • ABRIR PUERTO"
+    echo "[0] • VOLVER"
     echo ""
-    echo -ne "\033[1;32mO QUE DESEA HAZER \033[1;33m?\033[1;37m "
+    echo -ne "O QUE DESEA HAZER ? "
     read resposta
     if [[ "$resposta" = '1' ]]; then
         if ps x | grep -w udpvpn | grep -v grep 1>/dev/null 2>/dev/null; then
             clear
-            echo -e "\E[41;1;37m             BADVPN              \E[0m"
+            echo "             BADVPN              "
             echo ""
             fun_stopbad () {
                 sleep 1
@@ -32,16 +32,16 @@ fun_badvpn() {
                 sleep 1
                 screen -wipe >/dev/null
             }
-            echo -e "\033[1;32mDESACTIVANDO EL BADVPN\033[1;33m"
+            echo "DESACTIVANDO EL BADVPN"
             echo ""
             fun_stopbad
             echo ""
-            echo -e "\033[1;32mBADVPN DESACTIVADO CON EXITO!\033[1;33m"
+            echo "BADVPN DESACTIVADO CON EXITO!"
             sleep 3
             fun_badvpn
         else
             clear
-            echo -e "\033[1;32mINICIANDO EL BADVPN... \033[0m\n"
+            echo "INICIANDO EL BADVPN... "
             fun_udpon () {
                 screen -dmS udpvpn /bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 10000 --max-connections-for-client 8
                 [[ $(grep -wc "udpvpn" /etc/autostart) = '0' ]] && {
@@ -66,26 +66,26 @@ fun_badvpn() {
             inst_udp
             fun_udpon
             echo ""
-            echo -e "\033[1;32mBADVPN ACTIVADO CON EXITO\033[1;33m"
+            echo "BADVPN ACTIVADO CON EXITO"
             sleep 3
             fun_badvpn
         fi
     elif [[ "$resposta" = '2' ]]; then
         if ps x | grep -w udpvpn | grep -v grep 1>/dev/null 2>/dev/null; then
             clear
-            echo -e "\E[44;1;37m            BADVPN             \E[0m"
+            echo "            BADVPN             "
             echo ""
-            echo -ne "\033[1;32mCUAL PUERTO DESEA ULTILIZAR \033[1;33m?\033[1;37m: "
+            echo -ne "CUAL PUERTO DESEA ULTILIZAR ?: "
             read porta
             [[ -z "$porta" ]] && {
                 echo ""
-                echo -e "\033[1;31mPuerto invalido!"
+                echo "Puerto invalido!"
                 sleep 2
                 clear
                 menu
             }
             echo ""
-            echo -e "\033[1;32mINICIANDO el BADVPN en PUERTO \033[1;31m$porta\033[1;33m"
+            echo "INICIANDO el BADVPN en PUERTO $porta"
             echo ""
             fun_abrirptbad() {
                 sleep 1
@@ -94,23 +94,23 @@ fun_badvpn() {
             }
             fun_abrirptbad
             echo ""
-            echo -e "\033[1;32mBADVPN ACTIVADO CON SUCESSO\033[1;33m"
+            echo "BADVPN ACTIVADO CON SUCESSO"
             sleep 2
             fun_badvpn
         else
             clear
-            echo -e "\033[1;31mFUNCION NO DISPONIBLE\n\n\033[1;33mACTIVE  BADVPN PRIMERO !\033[1;33m"
+            echo "FUNCION NO DISPONIBLE\n\nACTIVE  BADVPN PRIMERO !"
             sleep 2
             fun_badvpn
         fi
     elif [[ "$resposta" = '0' ]]; then
         echo ""
-        echo -e "\033[1;31mRetornando...\033[0m"
+        echo "Retornando..."
         sleep 1
         menu
     else
         echo ""
-        echo -e "\033[1;31mOpcion invalida !\033[0m"
+        echo "Opcion invalida !"
         sleep 1
         fun_badvpn
     fi
