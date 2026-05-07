@@ -40,17 +40,25 @@ REPO="https://raw.githubusercontent.com/hayate25/genkkoplus/main"
 echo ""
 echo "--- ACTUALIZANDO SISTEMA ---"
 apt-get update -y > /dev/null 2>&1
+echo "    OK"
 
 # Instalar paquetes necesarios
 echo ""
 echo "--- INSTALANDO PAQUETES ---"
 apt-get install -y bc python3 htop git screen nano unzip lsof net-tools dos2unix nload jq curl figlet python3-pip at perl > /dev/null 2>&1
 pip3 install speedtest-cli > /dev/null 2>&1
+echo "    OK"
 
 # Configurar firewall
 echo ""
 echo "--- CONFIGURANDO FIREWALL ---"
-[[ -f "/usr/sbin/ufw" ]] && ufw allow 443/tcp ; ufw allow 80/tcp ; ufw allow 8080/tcp ; ufw allow 22/tcp
+if [[ -f "/usr/sbin/ufw" ]]; then
+    ufw allow 443/tcp > /dev/null 2>&1
+    ufw allow 80/tcp  > /dev/null 2>&1
+    ufw allow 8080/tcp > /dev/null 2>&1
+    ufw allow 22/tcp  > /dev/null 2>&1
+fi
+echo "    OK"
 
 # Crear directorios
 echo ""
@@ -65,8 +73,9 @@ touch /etc/SSHPlus/temp_users.db
 touch /etc/SSHPlus/modo_actual.cfg
 echo "SSH" > /etc/SSHPlus/modo_actual.cfg
 echo "0" > /etc/SSHPlus/Exp
+echo "    OK"
 
-# Descargar modulos (son scripts auto-instalables con cat > /bin/...)
+# Descargar e instalar módulos
 echo ""
 echo "--- INSTALANDO MODULOS ---"
 
@@ -93,19 +102,46 @@ MODULOS=(
     "sshplus_auto_backup"
 )
 
+TOTAL=${#MODULOS[@]}
+CONTADOR=0
+ERRORES=0
+
 for modulo in "${MODULOS[@]}"; do
-    echo "    Instalando $modulo..."
-    # Descargar y ejecutar (cada modulo se auto-instala con cat > /bin/...)
-    bash <(curl -s "$REPO/Modulos/$modulo") 2>/dev/null
-    chmod +x /bin/$modulo 2>/dev/null
+    CONTADOR=$((CONTADOR + 1))
+    echo -n "    [$CONTADOR/$TOTAL] Instalando $modulo... "
+
+    # Descargar el script del módulo a /bin/
+    curl -s "$REPO/Modulos/$modulo" -o /bin/$modulo 2>/dev/null
+
+    if [[ -s "/bin/$modulo" ]]; then
+        chmod +x /bin/$modulo
+        # Convertir saltos de línea por si vienen en formato Windows
+        dos2unix /bin/$modulo > /dev/null 2>&1
+        echo "OK"
+    else
+        rm -f /bin/$modulo
+        echo "ERROR (no se pudo descargar)"
+        ERRORES=$((ERRORES + 1))
+    fi
 done
 
+echo ""
+if [[ $ERRORES -gt 0 ]]; then
+    echo "  ADVERTENCIA: $ERRORES modulo(s) no se pudieron instalar."
+else
+    echo "  Todos los modulos instalados correctamente."
+fi
+
 # Crear comando menu rapido
-echo "/bin/menu" > /bin/h
+echo "#!/bin/bash" > /bin/h
+echo "/bin/menu" >> /bin/h
 chmod +x /bin/h
 
 # Configurar cron para demo_cleaner
+echo ""
+echo "--- CONFIGURANDO CRON ---"
 (crontab -l 2>/dev/null | grep -v "demo_cleaner"; echo "*/5 * * * * /bin/demo_cleaner >> /tmp/demo_cleaner.log 2>&1") | crontab -
+echo "    OK"
 
 # Base de datos de usuarios
 echo ""
@@ -117,19 +153,20 @@ if [ -f "$HOME/usuarios.db" ]; then
     echo "  [2] Crear nueva base de datos"
     echo ""
     echo -n "  Opcion [1-2]: "; read optiondb
-    
     if [ "$optiondb" = "2" ]; then
         awk -F : '$3 >= 500 { print $1 " 1" }' /etc/passwd | grep -v '^nobody' > $HOME/usuarios.db
     fi
 else
     awk -F : '$3 >= 500 { print $1 " 1" }' /etc/passwd | grep -v '^nobody' > $HOME/usuarios.db
 fi
+echo "    OK"
 
 # Limpiar
 echo ""
 echo "--- FINALIZANDO ---"
 cat /dev/null > ~/.bash_history
 history -c
+echo "    OK"
 
 clear
 echo ""
@@ -146,7 +183,9 @@ echo "=============================================="
 echo ""
 echo "  INSTALACION COMPLETADA EXITOSAMENTE"
 echo ""
-echo "  Comando principal: menu"
+echo "  Comandos disponibles:"
+echo "    menu    -> Panel principal"
+echo "    h       -> Atajo rapido al menu"
 echo ""
 echo "  Funciones:"
 echo "    - SSH      (usuarios con contraseña)"
@@ -158,4 +197,14 @@ echo ""
 echo "=============================================="
 echo ""
 
+# Verificar que menu existe antes de ofrecer ejecutarlo
+if [[ -x "/bin/menu" ]]; then
+    echo -n "Desea abrir el menu ahora? [s/n]: "; read abrirmenu
+    [[ $abrirmenu = @(s|S) ]] && exec /bin/menu
+else
+    echo "  ADVERTENCIA: /bin/menu no se instalo correctamente."
+    echo "  Revisa la conexion al repositorio e intenta de nuevo."
+fi
+
+echo ""
 exit 0
