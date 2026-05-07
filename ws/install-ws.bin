@@ -51,15 +51,11 @@ systemctl start ws-epro
 echo "CONFIGURANRO VPS ESPERA.."
 sleep 3
 clear
-LP='\033[1;35m'
-NC='\033[0m' # No Color
-echo -e "${LP}"
-echo    "=========== GENKKOSSH ============"
-echo    "---------------------------------------"
-echo    "   Puerto Local : $openssh"
-echo    "   Puerto Phyton: $wsopenssh"
-echo    "---------------------------------------"
-echo    ""
-echo    "Probado en ubuntu 20"
-echo -e "${NC}"
+echo "=========== GENKKOSSH ============"
+echo "---------------------------------------"
+echo "   Puerto Local : $openssh"
+echo "   Puerto Phyton: $wsopenssh"
+echo "---------------------------------------"
+echo ""
+echo "Probado en ubuntu 20"
 rm -rf install-ws && cat /dev/null > ~/.bash_history && history -c
