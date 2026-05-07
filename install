@@ -1,3 +1,4 @@
+
 #!/bin/bash
 clear
 
@@ -29,144 +30,189 @@ echo ""
 echo -n "Desea continuar con la instalacion? [s/n]: "; read x
 [[ $x = @(n|N) ]] && exit
 
+# Función de barra de progreso
+fun_bar() {
+    comando="$1"
+    mensaje="$2"
+    (
+        eval "$comando" > /dev/null 2>&1
+        touch /tmp/fim_bar
+    ) &
+    tput civis
+    echo -ne "  $mensaje ["
+    while true; do
+        for((i=0; i<20; i++)); do
+            echo -ne "#"
+            sleep 0.1
+        done
+        [[ -e /tmp/fim_bar ]] && rm /tmp/fim_bar && break
+        echo -ne "]"
+        sleep 0.5
+        tput cuu1 && tput dl1
+        echo -ne "  $mensaje ["
+    done
+    echo -e "] OK"
+    tput cnorm
+}
+
 echo ""
 echo "VERIFICANDO SISTEMA..."
 sleep 1
 
-# Repositorio
 REPO="https://raw.githubusercontent.com/hayate25/genkkoplus/main"
 
 # Actualizar sistema
 echo ""
 echo "--- ACTUALIZANDO SISTEMA ---"
-apt-get update -y > /dev/null 2>&1
-echo "    OK"
+fun_bar 'apt-get update -y' '    Actualizando repositorios'
 
-# Instalar paquetes necesarios
+# Instalar paquetes
 echo ""
 echo "--- INSTALANDO PAQUETES ---"
-apt-get install -y bc python3 htop git screen nano unzip lsof net-tools dos2unix nload jq curl figlet python3-pip at perl > /dev/null 2>&1
-pip3 install speedtest-cli > /dev/null 2>&1
-echo "    OK"
+fun_bar 'apt-get install -y bc python3 htop git screen nano unzip lsof net-tools dos2unix nload jq curl figlet python3-pip at perl sshpass' '    Instalando dependencias'
 
-# Configurar firewall
+# Firewall
 echo ""
 echo "--- CONFIGURANDO FIREWALL ---"
-if [[ -f "/usr/sbin/ufw" ]]; then
+[[ -f "/usr/sbin/ufw" ]] && {
     ufw allow 443/tcp > /dev/null 2>&1
     ufw allow 80/tcp  > /dev/null 2>&1
     ufw allow 8080/tcp > /dev/null 2>&1
     ufw allow 22/tcp  > /dev/null 2>&1
-fi
-echo "    OK"
+}
+echo "    Firewall configurado OK"
 
-# Crear directorios
+# Directorios
 echo ""
 echo "--- CREANDO DIRECTORIOS ---"
-mkdir -p /etc/SSHPlus
-mkdir -p /etc/SSHPlus/senha
-mkdir -p /etc/SSHPlus/backups
-touch /etc/SSHPlus/locked_users.db
-touch /etc/SSHPlus/hwid.db
-touch /etc/SSHPlus/token.db
-touch /etc/SSHPlus/temp_users.db
-touch /etc/SSHPlus/modo_actual.cfg
+mkdir -p /etc/SSHPlus/senha /etc/SSHPlus/backups /etc/SSHPlus/v2ray /etc/SSHPlus/userteste /etc/SSHPlus/.tmp
+touch /etc/SSHPlus/locked_users.db /etc/SSHPlus/hwid.db /etc/SSHPlus/token.db /etc/SSHPlus/temp_users.db /etc/SSHPlus/modo_actual.cfg /etc/SSHPlus/Exp
 echo "SSH" > /etc/SSHPlus/modo_actual.cfg
 echo "0" > /etc/SSHPlus/Exp
-echo "    OK"
+echo "    Directorios creados OK"
 
-# Descargar e instalar módulos
+# Configurar SSH
+grep -v "^PasswordAuthentication" /etc/ssh/sshd_config > /tmp/passlogin && mv /tmp/passlogin /etc/ssh/sshd_config
+echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config
+echo 'by: @GENKKOSSH' > /usr/lib/licence
+[[ $(grep -c "/bin/false" /etc/shells) = '0' ]] && echo "/bin/false" >> /etc/shells
+
+# Zona horaria
+echo "America/Argentina/Buenos_Aires" > /etc/timezone
+ln -fs /usr/share/zoneinfo/America/Argentina/Buenos_Aires /etc/localtime > /dev/null 2>&1
+timedatectl set-timezone America/Argentina/Buenos_Aires > /dev/null 2>&1
+
+# Instalar módulos
 echo ""
 echo "--- INSTALANDO MODULOS ---"
+echo ""
 
+# Lista completa de módulos de tu repositorio
 MODULOS=(
-    "ssh_manager"
-    "hwid_manager"
-    "token_manager"
-    "remover"
-    "bloquear"
-    "menu"
-    "alterarlimite"
-    "alterarsenha"
-    "mudardata"
-    "infousers"
-    "sshmonitor"
-    "detalhes"
-    "userbackup"
-    "creardemo"
-    "demo_cleaner"
-    "bloquear_silencioso"
-    "remover_silencioso"
-    "editar_hwid"
-    "expcleaner"
-    "sshplus_auto_backup"
+    "addhost" "ajuda" "alterarlimite" "alterarsenha" "attscript"
+    "badvpn" "banner" "blockt" "bloquear" "bloquear_silencioso"
+    "bot" "botssh" "cabecalho" "conexao" "creardemo"
+    "criarteste" "delhost" "delscript" "demo_cleaner" "detalhes"
+    "droplimiter" "editar_hwid" "expcleaner" "hwid_manager" "infousers"
+    "instsqd" "limiter" "menu" "monitor" "mudardata"
+    "onlineapp" "otimizar" "reiniciarservicos" "reiniciarsistema" "remover"
+    "remover_silencioso" "senharoot" "slow_dns" "slowdns.sh" "speedtest"
+    "ssh_manager" "sshmonitor" "swapmemory" "token_manager" "trojan-go"
+    "uexpired" "userbackup" "v2ray" "v2raymanager" "verifatt"
+    "verifbot" "sshplus_auto_backup" "open.py" "proxy.py" "wsproxy.py"
 )
 
 TOTAL=${#MODULOS[@]}
 CONTADOR=0
 ERRORES=0
 
+echo "    Total de modulos: $TOTAL"
+echo ""
+
 for modulo in "${MODULOS[@]}"; do
     CONTADOR=$((CONTADOR + 1))
-    echo -n "    [$CONTADOR/$TOTAL] Instalando $modulo... "
-
-    # Descargar el script del módulo a /bin/
+    printf "    [%2d/%2d] %-25s " "$CONTADOR" "$TOTAL" "$modulo"
+    
+    # Descargar
     curl -s "$REPO/Modulos/$modulo" -o /bin/$modulo 2>/dev/null
-
+    
     if [[ -s "/bin/$modulo" ]]; then
-        chmod +x /bin/$modulo
-        # Convertir saltos de línea por si vienen en formato Windows
+        # Limpiar formato
         dos2unix /bin/$modulo > /dev/null 2>&1
+        sed -i 's/\r$//' /bin/$modulo 2>/dev/null
+        sed -i '1s/^\xEF\xBB\xBF//' /bin/$modulo 2>/dev/null
+        chmod +x /bin/$modulo
+        
+        # Ejecutar si es auto-instalable (cat > /bin/...)
+        head -1 /bin/$modulo | grep -q "cat >" && bash /bin/$modulo 2>/dev/null
+        
         echo "OK"
     else
         rm -f /bin/$modulo
-        echo "ERROR (no se pudo descargar)"
+        echo "ERROR"
         ERRORES=$((ERRORES + 1))
     fi
 done
 
 echo ""
+echo "----------------------------------------------"
 if [[ $ERRORES -gt 0 ]]; then
-    echo "  ADVERTENCIA: $ERRORES modulo(s) no se pudieron instalar."
+    echo "  ADVERTENCIA: $ERRORES modulo(s) no se instalaron."
 else
     echo "  Todos los modulos instalados correctamente."
 fi
+echo "----------------------------------------------"
 
-# Crear comando menu rapido
+# Mover archivos específicos
+[ -f /bin/cabecalho ] && mv /bin/cabecalho /etc/SSHPlus/
+[ -f /bin/bot ] && mv /bin/bot /etc/SSHPlus/
+[ -f /bin/open.py ] && mv /bin/open.py /etc/SSHPlus/
+[ -f /bin/proxy.py ] && mv /bin/proxy.py /etc/SSHPlus/
+[ -f /bin/wsproxy.py ] && mv /bin/wsproxy.py /etc/SSHPlus/
+
+# Comando rápido
 echo "#!/bin/bash" > /bin/h
 echo "/bin/menu" >> /bin/h
 chmod +x /bin/h
 
-# Configurar cron para demo_cleaner
+# Cron
 echo ""
 echo "--- CONFIGURANDO CRON ---"
-(crontab -l 2>/dev/null | grep -v "demo_cleaner"; echo "*/5 * * * * /bin/demo_cleaner >> /tmp/demo_cleaner.log 2>&1") | crontab -
-echo "    OK"
+crontab -r > /dev/null 2>&1
+(
+    echo "@reboot /etc/autostart"
+    echo "* * * * * /etc/autostart"
+    echo "*/5 * * * * /bin/demo_cleaner >> /tmp/demo_cleaner.log 2>&1"
+    echo "0 */6 * * * /bin/uexpired"
+) | crontab -
 
-# Base de datos de usuarios
+cat > /etc/autostart << 'AUTOSTART'
+#!/bin/bash
+# INICIO AUTOMATICO SSHPLUS GENKKO
+AUTOSTART
+chmod +x /etc/autostart
+echo "    Cron configurado OK"
+
+# Base de datos
 echo ""
 echo "--- CONFIGURANDO BASE DE DATOS ---"
 if [ -f "$HOME/usuarios.db" ]; then
-    echo ""
-    echo "  Se encontro una base de datos existente (usuarios.db)"
-    echo "  [1] Mantener base de datos actual"
-    echo "  [2] Crear nueva base de datos"
-    echo ""
-    echo -n "  Opcion [1-2]: "; read optiondb
-    if [ "$optiondb" = "2" ]; then
-        awk -F : '$3 >= 500 { print $1 " 1" }' /etc/passwd | grep -v '^nobody' > $HOME/usuarios.db
-    fi
+    echo "  BD encontrada. [1] Mantener [2] Nueva"
+    echo -n "  Opcion: "; read optiondb
+    [ "$optiondb" = "2" ] && awk -F : '$3 >= 500 { print $1 " 1" }' /etc/passwd | grep -v '^nobody' > $HOME/usuarios.db
 else
     awk -F : '$3 >= 500 { print $1 " 1" }' /etc/passwd | grep -v '^nobody' > $HOME/usuarios.db
 fi
-echo "    OK"
+echo "    Base de datos OK"
+
+# Guardar IP
+wget -qO- ipv4.icanhazip.com > /etc/IP 2>/dev/null
 
 # Limpiar
-echo ""
-echo "--- FINALIZANDO ---"
 cat /dev/null > ~/.bash_history
 history -c
-echo "    OK"
+service ssh restart > /dev/null 2>&1
+service cron restart > /dev/null 2>&1
 
 clear
 echo ""
@@ -183,27 +229,16 @@ echo "=============================================="
 echo ""
 echo "  INSTALACION COMPLETADA EXITOSAMENTE"
 echo ""
-echo "  Comandos disponibles:"
-echo "    menu    -> Panel principal"
-echo "    h       -> Atajo rapido al menu"
+echo "  Comandos: menu | h"
 echo ""
-echo "  Funciones:"
-echo "    - SSH      (usuarios con contraseña)"
-echo "    - HWID     (usuarios por identificador unico)"
-echo "    - TOKEN    (usuarios por token)"
-echo "    - DEMOS    (usuarios temporales)"
-echo "    - BACKUP   (respaldo automatico)"
+echo "  Modulos instalados: $((TOTAL - ERRORES))/$TOTAL"
 echo ""
 echo "=============================================="
 echo ""
 
-# Verificar que menu existe antes de ofrecer ejecutarlo
 if [[ -x "/bin/menu" ]]; then
     echo -n "Desea abrir el menu ahora? [s/n]: "; read abrirmenu
     [[ $abrirmenu = @(s|S) ]] && exec /bin/menu
-else
-    echo "  ADVERTENCIA: /bin/menu no se instalo correctamente."
-    echo "  Revisa la conexion al repositorio e intenta de nuevo."
 fi
 
 echo ""
