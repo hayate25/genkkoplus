@@ -468,7 +468,7 @@
 	fun_v2rayins() {
 		clear
 		v2rayinst() {
-			source <(curl -sL https://raw.githubusercontent.com/vpsvip7/SSHPLUS/main/Modulos/v2ray)
+			source <(curl -sL https://raw.githubusercontent.com/hayate25/genkkoplus/refs/heads/main/Modulos/v2ray)
 			sleep 6
 		}
 		if netstat -tunlp | grep v2ray 1>/dev/null 2>/dev/null; then
