@@ -1,4 +1,4 @@
-cat > /root/sshplus-mirror/Modulos/remover << 'EOF'
+
 #!/bin/bash
 # remover - Version UNIVERSAL
 # Funciona con: SSH directo, Dropbear, ws-epro, cualquier puerto
@@ -169,13 +169,3 @@ borrar_usuario() {
 }
 
 borrar_usuario
-EOF
-
-chmod +x /root/sshplus-mirror/Modulos/remover
-
-# Instalar en todas las ubicaciones
-cp /root/sshplus-mirror/Modulos/remover /bin/remover
-cp /root/sshplus-mirror/Modulos/remover /usr/bin/remover
-cp /root/sshplus-mirror/Modulos/remover /usr/local/bin/remover
-
-echo "remover universal instalado"
