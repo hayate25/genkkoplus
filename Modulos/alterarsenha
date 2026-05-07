@@ -1,4 +1,4 @@
-cat > /bin/alterarsenha << 'EOF'
+
 #!/bin/bash
 # alterarsenha - Módulo para cambiar contraseña de usuario
 # Compatible con sistema SSHPlus (IDs dinámicos)
@@ -231,7 +231,3 @@ echo ""
 
 sleep 3
 exit 0
-EOF
-
-chmod +x /bin/alterarsenha
-echo "✅ alterarsenha actualizado correctamente"
