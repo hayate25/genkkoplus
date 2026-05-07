@@ -1,0 +1,177 @@
+
+#!/bin/bash
+#====================================================
+#	@hayate25 - GENKKOPLUS
+#====================================================
+clear
+
+[[ "$(whoami)" != "root" ]] && {
+    echo "ERROR: Debes ejecutar como root"
+    exit 0
+}
+
+echo "=============================================="
+echo "           SSHPLUS - GENKKO EDITION"
+echo "=============================================="
+echo ""
+
+REPO="https://raw.githubusercontent.com/hayate25/genkkoplus/main"
+
+# Zona horaria Argentina
+echo "America/Argentina/Buenos_Aires" > /etc/timezone
+ln -fs /usr/share/zoneinfo/America/Argentina/Buenos_Aires /etc/localtime > /dev/null 2>&1
+timedatectl set-timezone America/Argentina/Buenos_Aires > /dev/null 2>&1
+
+# Crear directorios
+mkdir -p /etc/SSHPlus/senha
+mkdir -p /etc/SSHPlus/backups
+mkdir -p /etc/SSHPlus/v2ray
+mkdir -p /etc/SSHPlus/userteste
+mkdir -p /etc/SSHPlus/.tmp
+
+# Archivos base
+touch /etc/SSHPlus/Exp
+touch /etc/SSHPlus/locked_users.db
+touch /etc/SSHPlus/hwid.db
+touch /etc/SSHPlus/token.db
+touch /etc/SSHPlus/temp_users.db
+echo "SSH" > /etc/SSHPlus/modo_actual.cfg
+echo "0" > /etc/SSHPlus/Exp
+echo 'by: @GENKKOSSH' > /usr/lib/licence
+
+# Configurar SSH para aceptar contraseñas
+grep -v "^PasswordAuthentication" /etc/ssh/sshd_config > /tmp/passlogin && mv /tmp/passlogin /etc/ssh/sshd_config
+echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config
+
+# Configurar Apache si existe
+netstat -nplt 2>/dev/null | grep -w 'apache2' | grep -w '80' && sed -i "s/Listen 80/Listen 81/g" /etc/apache2/ports.conf && service apache2 restart
+
+# Actualizar sistema
+echo ""
+echo "--- ACTUALIZANDO SISTEMA ---"
+apt-get update -y > /dev/null 2>&1
+apt-get install -y bc python3 htop git screen nano unzip lsof net-tools dos2unix nload jq curl figlet python3-pip at perl sshpass > /dev/null 2>&1
+
+echo ""
+echo "--- DESCARGANDO MODULOS ---"
+
+# Todos los módulos disponibles en tu repositorio
+MODULOS=(
+    "addhost"
+    "ajuda"
+    "alterarlimite"
+    "alterarsenha"
+    "attscript"
+    "badvpn"
+    "banner"
+    "blockt"
+    "bloquear"
+    "bloquear_silencioso"
+    "bot"
+    "botssh"
+    "cabecalho"
+    "conexao"
+    "creardemo"
+    "criarteste"
+    "delhost"
+    "delscript"
+    "demo_cleaner"
+    "detalhes"
+    "droplimiter"
+    "editar_hwid"
+    "expcleaner"
+    "hwid_manager"
+    "infousers"
+    "instsqd"
+    "limiter"
+    "menu"
+    "monitor"
+    "mudardata"
+    "onlineapp"
+    "otimizar"
+    "reiniciarservicos"
+    "reiniciarsistema"
+    "remover"
+    "remover_silencioso"
+    "senharoot"
+    "slow_dns"
+    "speedtest"
+    "ssh_manager"
+    "sshmonitor"
+    "swapmemory"
+    "token_manager"
+    "trojan-go"
+    "uexpired"
+    "userbackup"
+    "v2ray"
+    "v2raymanager"
+    "verifatt"
+    "verifbot"
+    "sshplus_auto_backup"
+)
+
+for modulo in "${MODULOS[@]}"; do
+    echo "    $modulo..."
+    wget -q "$REPO/Modulos/$modulo" -O /tmp/$modulo 2>/dev/null
+    dos2unix /tmp/$modulo 2>/dev/null
+    sed -i 's/\r$//' /tmp/$modulo 2>/dev/null
+    sed -i '1s/^\xEF\xBB\xBF//' /tmp/$modulo 2>/dev/null
+    bash /tmp/$modulo 2>/dev/null
+    chmod +x /bin/$modulo 2>/dev/null
+    rm -f /tmp/$modulo
+done
+
+# Mover archivos específicos a /etc/SSHPlus
+[ -f /bin/cabecalho ] && mv /bin/cabecalho /etc/SSHPlus/
+[ -f /bin/bot ] && mv /bin/bot /etc/SSHPlus/
+[ -f /bin/open.py ] && mv /bin/open.py /etc/SSHPlus/
+[ -f /bin/proxy.py ] && mv /bin/proxy.py /etc/SSHPlus/
+[ -f /bin/wsproxy.py ] && mv /bin/wsproxy.py /etc/SSHPlus/
+
+# Crear comando rápido
+echo "/bin/menu" > /bin/h && chmod +x /bin/h
+
+# Configurar cron
+crontab -r > /dev/null 2>&1
+(
+    echo "@reboot /etc/autostart"
+    echo "* * * * * /etc/autostart"
+    echo "*/5 * * * * /bin/demo_cleaner >> /tmp/demo_cleaner.log 2>&1"
+    echo "0 */6 * * * /bin/uexpired"
+) | crontab -
+
+# Configurar autostart
+cat > /etc/autostart << 'AUTOSTART'
+#!/bin/bash
+# INICIO AUTOMATICO SSHPLUS
+AUTOSTART
+chmod +x /etc/autostart
+
+# Base de datos
+echo ""
+echo "--- CONFIGURANDO BASE DE DATOS ---"
+if [ -f "$HOME/usuarios.db" ]; then
+    echo -n "BD existente. [1] Mantener [2] Nueva: "; read optiondb
+    [ "$optiondb" = "2" ] && awk -F : '$3 >= 500 { print $1 " 1" }' /etc/passwd | grep -v '^nobody' > $HOME/usuarios.db
+else
+    awk -F : '$3 >= 500 { print $1 " 1" }' /etc/passwd | grep -v '^nobody' > $HOME/usuarios.db
+fi
+
+# Guardar IP
+wget -qO- ipv4.icanhazip.com > /etc/IP 2>/dev/null
+
+# Finalizar
+cat /dev/null > ~/.bash_history
+history -c
+service ssh restart > /dev/null 2>&1
+service cron restart > /dev/null 2>&1
+
+clear
+echo ""
+echo "=============================================="
+echo "  INSTALACION COMPLETADA"
+echo "  Comando: menu"
+echo "  Repo: hayate25/genkkoplus"
+echo "=============================================="
+echo ""
+exit 0
