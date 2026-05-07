@@ -1,5 +1,5 @@
-cat > /bin/demo_cleaner << 'EOF'
 #!/bin/bash
+#GENKKOSSH
 # demo_cleaner - Elimina demos expirados
 # Mismo flujo para SSH, HWID y TOKEN: Bloquear -> Desconectar -> Borrar
 
@@ -250,10 +250,3 @@ chage -E 0 "$user" 2>/dev/null
 
 echo "[$(date '+%H:%M:%S')] $user bloqueado y desconectado" >> /tmp/demo_cleaner.log
 exit 0
-EOF
-
-chmod +x /bin/bloquear_silencioso
-
-echo "✅ demo_cleaner actualizado - Mismo flujo SSH/HWID: BLOQUEAR -> BORRAR"
-echo "✅ remover_silencioso actualizado"
-echo "✅ bloquear_silencioso actualizado"
