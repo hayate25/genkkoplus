@@ -1,12 +1,9 @@
-
 #!/bin/bash
 #GENKKOSSH
 # menu - Menú principal de gestion de usuarios SSHPlus
-# Versión sin colores - Compatible con bots
 
 MODO_ACTUAL="/etc/SSHPlus/modo_actual.cfg"
 
-# Inicializar modo si no existe
 if [ ! -f "$MODO_ACTUAL" ]; then
     echo "SSH" > "$MODO_ACTUAL"
 fi
@@ -62,7 +59,7 @@ menu_gestion_usuarios() {
         echo "=========================================="
         echo -n "  Opcion: "; read opt
         
-        case $opt in
+        case "$opt" in
             1)
                 case "$modo" in
                     SSH)   /bin/ssh_manager create ;;
@@ -131,18 +128,19 @@ menu_gestion_usuarios() {
                 clear
                 echo "  [1] SSH  [2] HWID  [3] TOKEN"
                 echo -n "  Nuevo modo: "; read nm
-                case $nm in
-                    1) echo "SSH" > "$MODO_ACTUAL" ;;
-                    2) echo "HWID" > "$MODO_ACTUAL" ;;
+                case "$nm" in
+                    1) echo "SSH"   > "$MODO_ACTUAL" ;;
+                    2) echo "HWID"  > "$MODO_ACTUAL" ;;
                     3) echo "TOKEN" > "$MODO_ACTUAL" ;;
                 esac
                 ;;
-            00) return ;;
+            "00")
+                return
+                ;;
         esac
     done
 }
 
-# Menú principal
 while true; do
     clear
     _expuser=$(cat /etc/SSHPlus/Exp 2>/dev/null || echo "0")
@@ -161,12 +159,21 @@ while true; do
     echo "=========================================="
     echo -n "  Opcion: "; read opc
     
-    case $opc in
+    case "$opc" in
         1) menu_gestion_usuarios ;;
         2) /bin/sshmonitor ;;
         3) /bin/detalhes ;;
         4) /bin/userbackup ;;
-        5) /bin/conexao ;;
+        5)
+            if [[ -x "/bin/conexao" ]]; then
+                /bin/conexao
+            else
+                echo ""
+                echo "  ERROR: modulo conexao no encontrado en /bin/"
+                echo "  Reinstala con el instalador."
+                echo ""; read -p "ENTER para continuar..."
+            fi
+            ;;
         0) exit 0 ;;
     esac
 done
