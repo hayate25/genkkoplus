@@ -1,5 +1,6 @@
-cat > /bin/mudardata << 'EOF'
+
 #!/bin/bash
+#GENKkKOSSH
 # mudardata - Módulo para editar fecha de vencimiento de usuarios
 # Compatible con sistema SSHPlus (IDs dinámicos)
 # Versión sin colores para compatibilidad con bots
@@ -234,7 +235,3 @@ fi
 
 sleep 3
 exit 0
-EOF
-
-chmod +x /bin/mudardata
-echo "✅ mudardata regenerado correctamente"
