@@ -6,7 +6,7 @@ sleep 2
 cd
 
 #Install ws-epro
-wget https://github.com/vpsvip7/1s/raw/main/ws-epro -O /usr/local/bin/ws-epro &&
+https://raw.githubusercontent.com/hayate25/genkkoplus/main/ws/ws-epro -O /usr/local/bin/ws-epro &&
 chmod +x /usr/local/bin/ws-epro
 
 #ws-epro service
