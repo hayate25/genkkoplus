@@ -1,5 +1,6 @@
-cat > /bin/infousers << 'EOF'
+
 #!/bin/bash
+#GENKKOSSH
 # infousers - Módulo de información de usuarios
 # Compatible con sistema SSHPlus (IDs dinámicos)
 # Versión sin colores - Muestra según modo actual
@@ -171,7 +172,3 @@ echo "=============================================="
 echo ""
 
 exit 0
-EOF
-
-chmod +x /bin/infousers
-echo "✅ infousers instalado correctamente"
