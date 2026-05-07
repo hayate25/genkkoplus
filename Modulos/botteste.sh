@@ -5,41 +5,33 @@
 
 set -e
 
-# Cores
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-
 # Configurações
 GITHUB_USER="nandoslayer"  # ⚠️ ALTERE AQUI
 GITHUB_REPO="vps-reinstaller"  # ⚠️ ALTERE AQUI
 VERSION="latest"  # ou específica como "v1.0.0"
 
 clear
-echo -e "${CYAN}════════════════════════════════════${NC}"
-echo -e "${CYAN}   🚀 VPS Reinstaller - Instalacion Automática${NC}"
-echo -e "${CYAN}═════════════════════════════${NC}"
+echo "════════════════════════════════════"
+echo "   🚀 VPS Reinstaller - Instalacion Automática"
+echo "═════════════════════════════"
 echo ""
 
 # Detectar arquitetura
-echo -e "${BLUE}🔍 Detectando arquitetura de sistema...${NC}"
+echo "🔍 Detectando arquitetura de sistema..."
 ARCH=$(uname -m)
-echo -e "   Arquitetura detectada: ${YELLOW}$ARCH${NC}"
+echo "   Arquitetura detectada: $ARCH"
 
 case $ARCH in
     x86_64)
         BINARY_NAME="vps-reinstaller-x86_64"
-        echo -e "   ${GREEN}✅ Compatível: Intel/AMD 64-bit${NC}"
+        echo "   ✅ Compatível: Intel/AMD 64-bit"
         ;;
     aarch64|arm64)
         BINARY_NAME="vps-reinstaller-aarch64"
-        echo -e "   ${GREEN}✅ Compatível: ARM 64-bit${NC}"
+        echo "   ✅ Compatível: ARM 64-bit"
         ;;
     *)
-        echo -e "   ${RED}❌ Arquitetura não suportada: $ARCH${NC}"
+        echo "   ❌ Arquitetura não suportada: $ARCH"
         echo ""
         echo "Arquiteturas suportadas:"
         echo "  • x86_64 (Intel/AMD 64-bit)"
@@ -58,13 +50,13 @@ elif command -v curl &> /dev/null; then
     DOWNLOADER="curl"
     DOWNLOAD_CMD="curl -L -o"
 else
-    echo -e "${RED}❌ Erro: wget ou curl no encontrado!${NC}"
+    echo "❌ Erro: wget ou curl no encontrado!"
     echo "Instale um dos dois:"
     echo "  • Debian/Ubuntu: apt install wget"
     exit 1
 fi
 
-echo -e "${BLUE}📥 Usando: ${YELLOW}$DOWNLOADER${NC}"
+echo "📥 Usando: $DOWNLOADER"
 echo ""
 
 # Construir URL do GitHub
@@ -74,8 +66,8 @@ else
     DOWNLOAD_URL="https://github.com/$GITHUB_USER/$GITHUB_REPO/releases/download/$VERSION/$BINARY_NAME"
 fi
 
-echo -e "${BLUE}📦 Baixando binário do GitHub...${NC}"
-echo -e "   URL: ${CYAN}$DOWNLOAD_URL${NC}"
+echo "📦 Baixando binário do GitHub..."
+echo "   URL: $DOWNLOAD_URL"
 echo ""
 
 # Baixar arquivo
@@ -87,7 +79,7 @@ fi
 
 if [ $? -ne 0 ]; then
     echo ""
-    echo -e "${RED}❌ Error al bajar o binário!${NC}"
+    echo "❌ Error al bajar o binário!"
     echo ""
     echo "Verifique se:"
     echo "  • A release existe no GitHub"
@@ -97,31 +89,31 @@ if [ $? -ne 0 ]; then
 fi
 
 echo ""
-echo -e "${GREEN}✅ Download concluído!${NC}"
+echo "✅ Download concluído!"
 
 # Dar permissão de execucion
-echo -e "${BLUE}🔧 Configurando permissões...${NC}"
+echo "🔧 Configurando permissões..."
 chmod +x vps-reinstaller
 
 # Verificar tamanho do arquivo
 SIZE=$(ls -lh vps-reinstaller | awk '{print $5}')
-echo -e "   Tamanho do binário: ${YELLOW}$SIZE${NC}"
+echo "   Tamanho do binário: $SIZE"
 
 echo ""
-echo -e "${GREEN}══════════════════════════════${NC}"
-echo -e "${GREEN}✅ Instalação concluída com sucesso!${NC}"
-echo -e "${GREEN}══════════════════════════════════${NC}"
+echo "══════════════════════════════"
+echo "✅ Instalação concluída com sucesso!"
+echo "══════════════════════════════════"
 echo ""
-echo -e "${YELLOW}🚀 Para ejecutar, digite:${NC}"
-echo -e "   ${CYAN}./vps-reinstaller${NC}"
+echo "🚀 Para ejecutar, digite:"
+echo "   ./vps-reinstaller"
 echo ""
-echo -e "${RED}⚠️  ATENCION:${NC}"
-echo -e "   • Este programa va ${RED}BORRAR TODOS LOS DATOS${NC} DE TU VPS"
-echo -e "   • HAGA ${YELLOW}BACKUP${NC} antes de Continuar"
-echo -e "   • Vos ${RED}perdera axeso SSH${NC} temporarmente"
+echo "⚠️  ATENCION:"
+echo "   • Este programa va BORRAR TODOS LOS DATOS DE TU VPS"
+echo "   • HAGA BACKUP antes de Continuar"
+echo "   • Vos perderá axeso SSH temporarmente"
 echo ""
 
-# Perguntar se quer ejecutar ahora
+# Perguntar se quer ejecutar agora
 if [ -t 1 ] && [ -e /dev/tty ]; then
     echo ""
     read -r -p "Desea ejecutar ahora? (s/N): " REPLY < /dev/tty
@@ -135,5 +127,5 @@ if [[ "$REPLY" =~ ^[Ss]$ ]]; then
     ./vps-reinstaller
 else
     echo ""
-    echo -e "${BLUE}👍 Execute quando estiver pronto: ${CYAN}./vps-reinstaller${NC}"
+    echo "👍 Execute quando estiver pronto: ./vps-reinstaller"
 fi
