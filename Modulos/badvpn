@@ -57,7 +57,7 @@ fun_badvpn() {
                     sleep 0.1
                 } || {
                     cd $HOME
-                    wget https://www.dropbox.com/s/48b36clnxkkurlz/badvpn-udpgw -o /dev/null
+                    wget wget https://raw.githubusercontent.com/hayate25/genkkoplus/main/squid/badvpn-udpgw -O badvpn-udpgw -o /dev/null
                     mv -f $HOME/badvpn-udpgw /bin/badvpn-udpgw
                     chmod 777 /bin/badvpn-udpgw
                 }
