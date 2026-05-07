@@ -1508,7 +1508,7 @@ unzip ddos.zip
 				speedtest
 				;;
 			8 | 08)
-				wget 'https://raw.githubusercontent.com/vpsvip7/2d/main/install-ws.bin' -O 'install-ws' && chmod +x install-ws && ./install-ws
+				wget 'https://raw.githubusercontent.com/hayate25/genkkoplus/refs/heads/main/ws/install-ws.bin' -O 'install-ws' && chmod +x install-ws && ./install-ws
 				;;
 			9 | 09)
 				slow_setup
