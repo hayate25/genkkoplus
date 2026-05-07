@@ -10,7 +10,7 @@ wget https://github.com/vpsvip7/1s/raw/main/ws-epro -O /usr/local/bin/ws-epro &&
 chmod +x /usr/local/bin/ws-epro
 
 #ws-epro service
-wget https://raw.githubusercontent.com/vpsvip7/1s/main/ws-epro.service -O /etc/systemd/system/ws-epro.service &&
+wget https://raw.githubusercontent.com/hayate25/genkkoplus/refs/heads/main/ws/ws-epro.service -O /etc/systemd/system/ws-epro.service &&
 chmod +x /etc/systemd/system/ws-epro.service
 
 #ws-epro port
