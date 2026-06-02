@@ -1,90 +1,248 @@
-
 #!/bin/bash
-# sshmonitor - Monitor de usuarios online simplificado
-# Version sin colores - Compatible con SSHPlus
+# sshmonitor - Monitor multi-protocolo con soporte HWID/TOKEN
+# Arquitectura: App → ws-epro:80 → Dropbear:90 → HWID user
 
-clear
+HWID_DB="/etc/SSHPlus/hwid.db"
+TOKEN_DB="/etc/SSHPlus/token.db"
+USUARIOS_DB="/root/usuarios.db"
+AUTH_LOG="/var/log/auth.log"
 
 fmt_bytes() {
-    local b=$1
-    if [ $b -ge 1073741824 ]; then
-        echo "$(awk "BEGIN {printf \"%.1fG\", $b/1073741824}")"
-    elif [ $b -ge 1048576 ]; then
-        echo "$(awk "BEGIN {printf \"%.1fM\", $b/1048576}")"
-    elif [ $b -ge 1024 ]; then
-        echo "$(awk "BEGIN {printf \"%.0fK\", $b/1024}")"
+    local b=${1:-0}
+    if [ "$b" -ge 1073741824 ]; then
+        awk "BEGIN {printf \"%.1fG\", $b/1073741824}"
+    elif [ "$b" -ge 1048576 ]; then
+        awk "BEGIN {printf \"%.1fM\", $b/1048576}"
+    elif [ "$b" -ge 1024 ]; then
+        awk "BEGIN {printf \"%.0fK\", $b/1024}"
     else
         echo "${b}B"
     fi
 }
 
 fmt_time() {
-    local s=$1
+    local s=${1:-0}
+    ( [ -z "$s" ] || [ "$s" -eq 0 ] ) 2>/dev/null && echo "--:--:--" && return
     printf "%02d:%02d:%02d" $((s/3600)) $(((s%3600)/60)) $((s%60))
 }
 
+# ─────────────────────────────────────────────
+# Resolver HWID → nombre de usuario
+# ─────────────────────────────────────────────
+hwid_to_user() {
+    local hwid=$1
+    grep -i "|${hwid}|" "$HWID_DB" 2>/dev/null | cut -d'|' -f1
+}
+
+# Resolver TOKEN → nombre de usuario
+token_to_user() {
+    local token=$1
+    grep -i "|${token}|" "$TOKEN_DB" 2>/dev/null | cut -d'|' -f1
+}
+
+# ─────────────────────────────────────────────
+# Detectar sesiones HWID activas via auth.log
+# Busca "Password auth succeeded" recientes con
+# un HWID (32 hex chars) que NO tenga "Exit" posterior
+# ─────────────────────────────────────────────
+get_hwid_sessions() {
+    # Obtener PIDs dropbear activos
+    local active_pids
+    active_pids=$(ps aux | awk '/dropbear/ && !/grep/' | awk '{print $2}')
+
+    [ -z "$active_pids" ] && return
+
+    # Para cada PID activo buscar en auth.log su HWID autenticado
+    while read -r pid; do
+        [ -z "$pid" ] && continue
+
+        # Buscar linea "Password auth succeeded" que mencione este PID
+        # El formato es: dropbear[PID]: Password auth succeeded for 'HWID'
+        hwid=$(grep "dropbear\[${pid}\].*Password auth succeeded" "$AUTH_LOG" 2>/dev/null \
+               | tail -1 \
+               | grep -oE "for '[a-f0-9]{32}'" \
+               | grep -oE "[a-f0-9]{32}")
+
+        [ -z "$hwid" ] && continue
+
+        # Verificar que el proceso sigue activo
+        kill -0 "$pid" 2>/dev/null || continue
+
+        username=$(hwid_to_user "$hwid")
+        [ -z "$username" ] && username="[$hwid]"
+
+        # Tiempo de vida del proceso dropbear
+        elapsed=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ')
+
+        # Bytes del proceso dropbear
+        down=0; up=0
+        if [ -r "/proc/$pid/io" ]; then
+            if [ -r "/proc/$pid/io" ]; then
+    down=$(awk '/^rchar:/{print $2}' /proc/$pid/io 2>/dev/null || echo 0)
+    up=$(awk   '/^wchar:/{print $2}' /proc/$pid/io 2>/dev/null || echo 0)
+        fi
+
+        echo "$username|HWID-WS|$pid|${elapsed:-0}|${down:-0}|${up:-0}|$hwid"
+
+    done <<< "$active_pids"
+}
+
+# ─────────────────────────────────────────────
+# Detectar sesiones SSH normales (OpenSSH)
+# usuarios reales del sistema
+# ─────────────────────────────────────────────
+get_ssh_sessions() {
+    ps aux 2>/dev/null \
+        | awk '$0~/sshd/ && $0!~/grep/ && $0!~/sshd -D/ && $0!~/\[priv\]/ && $0!~/listener/ {print $1"|"$2}' \
+        | grep -v "^root|" \
+        | while IFS='|' read -r u pid; do
+            [ -z "$u" ] || [ -z "$pid" ] && continue
+            id "$u" &>/dev/null || continue
+            elapsed=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ')
+            down=0; up=0
+            if [ -r "/proc/$pid/io" ]; then
+                if [ -r "/proc/$pid/io" ]; then
+    down=$(awk '/^rchar:/{print $2}' /proc/$pid/io 2>/dev/null || echo 0)
+    up=$(awk   '/^wchar:/{print $2}' /proc/$pid/io 2>/dev/null || echo 0)
+            fi
+            echo "$u|SSH|$pid|${elapsed:-0}|${down:-0}|${up:-0}|-"
+          done
+}
+
+# ─────────────────────────────────────────────
+# Detectar sesiones TOKEN activas
+# ─────────────────────────────────────────────
+get_token_sessions() {
+    [ ! -f "$TOKEN_DB" ] && return
+    # Similar a HWID pero busca tokens en auth.log
+    local active_pids
+    active_pids=$(ps aux | awk '/dropbear/ && !/grep/' | awk '{print $2}')
+    [ -z "$active_pids" ] && return
+
+    while read -r pid; do
+        [ -z "$pid" ] && continue
+        token=$(grep "dropbear\[${pid}\].*Password auth succeeded" "$AUTH_LOG" 2>/dev/null \
+                | tail -1 \
+                | grep -oE "for '[A-Za-z0-9_\-]{10,}'" \
+                | grep -oE "[A-Za-z0-9_\-]{10,}" \
+                | grep -v "^[a-f0-9]{32}$")
+        [ -z "$token" ] && continue
+        kill -0 "$pid" 2>/dev/null || continue
+        username=$(token_to_user "$token")
+        [ -z "$username" ] && continue
+        elapsed=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ')
+        down=0; up=0
+        if [ -r "/proc/$pid/io" ]; then
+            if [ -r "/proc/$pid/io" ]; then
+    down=$(awk '/^rchar:/{print $2}' /proc/$pid/io 2>/dev/null || echo 0)
+    up=$(awk   '/^wchar:/{print $2}' /proc/$pid/io 2>/dev/null || echo 0)
+        fi
+        echo "$username|TOKEN|$pid|${elapsed:-0}|${down:-0}|${up:-0}|$token"
+    done <<< "$active_pids"
+}
+
+# ─────────────────────────────────────────────
+# Contar conexiones ws-epro activas hacia :90
+# ─────────────────────────────────────────────
+get_wsepro_conn_count() {
+    ss -tnp 2>/dev/null \
+        | grep -c "127.0.0.1:90.*ws-epro\|ws-epro.*127.0.0.1:90"
+}
+
+# ─────────────────────────────────────────────
+# IP real del cliente (desde ws-epro via ss)
+# ─────────────────────────────────────────────
+get_client_ip() {
+    # La IP real está en la conexión ws-epro:80 ←→ cliente externo
+    ss -tnp 2>/dev/null \
+        | awk '/ws-epro.*:80/ && /ESTAB/ {
+            for(i=1;i<=NF;i++){
+                if($i ~ /[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+/ && $i !~ /^45\.|^127\./) {
+                    split($i,a,":");
+                    print a[1]; exit
+                }
+            }
+        }' | head -1
+}
+
+# ─────────────────────────────────────────────
+# LOOP PRINCIPAL
+# ─────────────────────────────────────────────
 while true; do
     clear
     echo "=============================================="
-    echo "         MONITOR DE USUARIOS ONLINE"
+    echo "       MONITOR DE USUARIOS ONLINE"
     echo "=============================================="
     echo ""
-    total_usuarios=$(wc -l < /root/usuarios.db 2>/dev/null || echo 0)
-    online=0
-    if [ -f /var/log/auth.log ]; then
-        dropbear_users=$(grep "Password auth succeeded" /var/log/auth.log 2>/dev/null | awk '{print $10}' | sort -u | tr -d "'")
-    else
-        dropbear_users=""
-    fi
-    ssh_users=$(ps aux 2>/dev/null | grep -v grep | grep "sshd.*@pts" | awk '{print $7}' | sort -u)
-    openvpn_users=""
-    if [ -f /etc/openvpn/openvpn-status.log ]; then
-        openvpn_users=$(grep -E "^[A-Za-z0-9]" /etc/openvpn/openvpn-status.log 2>/dev/null | cut -d',' -f1 | sort -u)
-    fi
-    all_online=$(echo -e "$dropbear_users\n$ssh_users\n$openvpn_users" | sort -u | grep -v "^$" | grep -v "nobody")
-    online=$(echo "$all_online" | grep -c .)
-    echo "  Total usuarios registrados: $total_usuarios"
-    echo "  Usuarios online: $online"
+
+    total_ssh=$(grep -c "|" "$USUARIOS_DB" 2>/dev/null || echo 0)
+    total_hwid=$(grep -c "|" "$HWID_DB" 2>/dev/null || echo 0)
+    total_token=$(grep -c "|" "$TOKEN_DB" 2>/dev/null || echo 0)
+
+    # Recolectar todas las sesiones
+    mapfile -t hwid_sessions  < <(get_hwid_sessions)
+    mapfile -t ssh_sessions   < <(get_ssh_sessions)
+    mapfile -t token_sessions < <(get_token_sessions)
+
+    all_sessions=("${hwid_sessions[@]}" "${ssh_sessions[@]}" "${token_sessions[@]}")
+    online=${#all_sessions[@]}
+
+    ws_conns=$(get_wsepro_conn_count)
+    client_ip=$(get_client_ip)
+
+    echo "  Usuarios SSH registrados   : $total_ssh"
+    echo "  Usuarios HWID registrados  : $total_hwid"
+    echo "  Usuarios TOKEN registrados : $total_token"
+    echo "  Sesiones activas           : $online"
+    echo "  Túneles ws-epro activos    : $ws_conns"
+    [ -n "$client_ip" ] && echo "  IP cliente actual          : $client_ip"
     echo ""
     echo "=============================================="
-    if [ $online -gt 0 ]; then
-        printf "%-15s %-12s %-15s %-12s %-10s\n" "USUARIO" "CONEXIONES" "DESCARGA" "SUBIDA" "TIEMPO"
-        echo "----------------------------------------------------------------------------"
-        while IFS= read -r user; do
-            [ -z "$user" ] && continue
-            conn_count=0
-            down_total=0
-            up_total=0
-            time_total=0
-            while IFS= read -r pid; do
-                [ -z "$pid" ] && continue
-                conn_count=$((conn_count + 1))
-                if [ -r "/proc/$pid/io" ]; then
-                    rchar=$(grep "rchar:" /proc/$pid/io 2>/dev/null | awk '{print $2}')
-                    wchar=$(grep "wchar:" /proc/$pid/io 2>/dev/null | awk '{print $2}')
-                    [ -n "$rchar" ] && down_total=$((down_total + rchar))
-                    [ -n "$wchar" ] && up_total=$((up_total + wchar))
-                fi
-                etimes=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ')
-                [ -n "$etimes" ] && time_total=$((time_total + etimes))
-            done < <(ps -u "$user" -o pid= 2>/dev/null)
-            printf "%-15s %-12s %-15s %-12s %-10s\n" \
-                "$user" "$conn_count" \
-                "$(fmt_bytes $down_total)" \
-                "$(fmt_bytes $up_total)" \
-                "$(fmt_time $time_total)"
-        done <<< "$all_online"
-        echo "----------------------------------------------------------------------------"
+
+    if [ "$online" -gt 0 ]; then
+        printf "%-15s %-10s %-10s %-12s %-12s %-12s\n" \
+            "USUARIO" "TIPO" "CONEX" "DESCARGA" "SUBIDA" "TIEMPO"
+        echo "-----------------------------------------------------------------------"
+
+        for entry in "${all_sessions[@]}"; do
+            IFS='|' read -r username type pid elapsed down up identifier <<< "$entry"
+            [ -z "$username" ] && continue
+
+            # Contar conexiones: para HWID contar túneles ws-epro activos
+            if [ "$type" = "HWID-WS" ]; then
+                conn=$ws_conns
+                [ "$conn" -eq 0 ] && conn=1
+            else
+                conn=$(who 2>/dev/null | awk -v u="$username" '$1==u' | wc -l)
+                [ "$conn" -eq 0 ] && conn=1
+            fi
+
+            printf "%-15s %-10s %-10s %-12s %-12s %-12s\n" \
+                "$username" \
+                "$type" \
+                "$conn" \
+                "$(fmt_bytes "${down:-0}")" \
+                "$(fmt_bytes "${up:-0}")" \
+                "$(fmt_time "${elapsed:-0}")"
+        done
+
+        echo "-----------------------------------------------------------------------"
         echo ""
-        echo "  DESCARGA = Datos recibidos por el usuario"
-        echo "  SUBIDA   = Datos enviados por el usuario"
+        echo "  HWID-WS  : App movil via WebSocket (ws-epro:80 → Dropbear:90)"
+        echo "  SSH      : OpenSSH directo"
+        echo "  TOKEN    : Autenticacion por token"
+        echo "  DESCARGA : Bytes leidos por proceso Dropbear/SSH"
+        echo "  SUBIDA   : Bytes escritos por proceso Dropbear/SSH"
+        echo "  TIEMPO   : Duracion de la sesion activa"
     else
         echo "  No hay usuarios conectados actualmente"
     fi
+
     echo ""
     echo "=============================================="
-    echo "  [Enter] Actualizar  [Q] Salir"
+    echo "  [Enter] Actualizar   [Q] Salir"
     echo "=============================================="
+
     read -t 10 -n 1 key 2>/dev/null
     case "$key" in
         q|Q) echo ""; exit 0 ;;
