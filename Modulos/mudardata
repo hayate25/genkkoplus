@@ -1,15 +1,173 @@
-
 #!/bin/bash
 #GENKkKOSSH
 # mudardata - Módulo para editar fecha de vencimiento de usuarios
 # Compatible con sistema SSHPlus (IDs dinámicos)
 # Versión sin colores para compatibilidad con bots
 
+MODO_ACTUAL="/etc/SSHPlus/modo_actual.cfg"
+modo=$(cat "$MODO_ACTUAL" 2>/dev/null || echo "SSH")
+
 clear
 echo "=============================================="
-echo "         EDITAR FECHA DE VENCIMIENTO"
+echo "         EDITAR FECHA DE VENCIMIENTO - $modo"
 echo "=============================================="
 echo ""
+
+# ── Si es HWID o TOKEN usar lógica propia ──────────────
+if [[ "$modo" == "HWID" || "$modo" == "TOKEN" ]]; then
+
+    case "$modo" in
+        HWID)  database="/etc/SSHPlus/hwid.db" ;;
+        TOKEN) database="/etc/SSHPlus/token.db" ;;
+    esac
+
+    if [ ! -f "$database" ] || [ ! -s "$database" ]; then
+        echo "  ERROR: No hay usuarios $modo registrados"
+        echo ""
+        exit 1
+    fi
+
+    echo "  LISTA DE USUARIOS $modo Y FECHAS DE VENCIMIENTO:"
+    echo "  --------------------------------------------"
+    echo ""
+
+    id=0
+    while IFS='|' read -r nombre identificador exp; do
+        [[ -z "$nombre" ]] && continue
+        id=$((id + 1))
+        if [[ -z "$exp" ]] || [[ "$exp" == "never" ]]; then
+            fecha="00/00/0000"
+            estado="SIN FECHA"
+        else
+            fecha=$(date -d "$exp" '+%d/%m/%Y' 2>/dev/null || echo "ERROR")
+            databr=$(date -d "$exp" +"%Y%m%d" 2>/dev/null)
+            hoje=$(date +"%Y%m%d")
+            if [ "$hoje" -ge "$databr" ] 2>/dev/null; then
+                estado="VENCIDO"
+            else
+                dias_rest=$(( ($(date -d "$exp" +%s) - $(date +%s)) / 86400 ))
+                estado="${dias_rest}d restantes"
+            fi
+        fi
+        printf "  [%02d] - %-20s | %-10s | %s\n" "$id" "$nombre" "$fecha" "$estado"
+    done < "$database"
+
+    if [[ $id -eq 0 ]]; then
+        echo "  No hay usuarios $modo registrados en el sistema."
+        exit 1
+    fi
+
+    echo ""
+    echo "  --------------------------------------------"
+    echo "  Total de usuarios: $id"
+    echo ""
+    echo -n "  Seleccione un usuario por ID [1-$id]: "
+    read option
+
+    if [[ -z $option ]]; then
+        echo "  ERROR: Debe seleccionar un ID"
+        exit 1
+    fi
+    if ! [[ "$option" =~ ^[0-9]+$ ]]; then
+        echo "  ERROR: Debe ingresar un número válido"
+        exit 1
+    fi
+    if [[ $option -lt 1 ]] || [[ $option -gt $id ]]; then
+        echo "  ERROR: ID fuera de rango [1-$id]"
+        exit 1
+    fi
+
+    # Obtener línea seleccionada
+    current=0
+    while IFS='|' read -r nombre identificador exp; do
+        [[ -z "$nombre" ]] && continue
+        current=$((current + 1))
+        if [ $current -eq $option ]; then
+            usuario="$nombre"
+            hwid_tok="$identificador"
+            exp_actual="$exp"
+            linea_num=$current
+            break
+        fi
+    done < "$database"
+
+    if [[ -z "$usuario" ]]; then
+        echo "  ERROR: Usuario no encontrado"
+        exit 1
+    fi
+
+    fecha_actual=$(date -d "$exp_actual" '+%d/%m/%Y' 2>/dev/null || echo "Sin fecha")
+
+    echo ""
+    echo "  Usuario seleccionado: $usuario"
+    echo "  Identificador: $hwid_tok"
+    echo "  Vencimiento actual: $fecha_actual"
+    echo ""
+    echo "  FORMATOS ACEPTADOS:"
+    echo "    - Fecha: DD/MM/AAAA (Ejemplo: 21/04/2024)"
+    echo "    - Dias:  30 (30 dias a partir de hoy)"
+    echo ""
+    echo -n "  Nueva fecha o dias para el usuario $usuario: "
+    read inputdate
+
+    if [[ -z $inputdate ]]; then
+        echo "  ERROR: Debe ingresar una fecha o número de días"
+        exit 1
+    fi
+
+    if [[ "$inputdate" =~ "/" ]]; then
+        sysdate="$(echo "$inputdate" | awk -v FS=/ -v OFS=- '{print $3,$2,$1}')"
+        udata="$inputdate"
+    else
+        if ! [[ "$inputdate" =~ ^[0-9]+$ ]]; then
+            echo "  ERROR: Debe ingresar un número de días válido"
+            exit 1
+        fi
+        if [[ $inputdate -lt 1 ]]; then
+            echo "  ERROR: Los días deben ser mayor que 0"
+            exit 1
+        fi
+        udata=$(date "+%d/%m/%Y" -d "+$inputdate days")
+        sysdate="$(echo "$udata" | awk -v FS=/ -v OFS=- '{print $3,$2,$1}')"
+    fi
+
+    if ! date "+%Y-%m-%d" -d "$sysdate" > /dev/null 2>&1; then
+        echo "  ERROR: Fecha inválida o inexistente"
+        exit 1
+    fi
+
+    today="$(date +"%Y%m%d")"
+    timemachine="$(date -d "$sysdate" +"%Y%m%d")"
+    if [ "$today" -gt "$timemachine" ]; then
+        echo "  ERROR: La fecha ingresada es anterior a hoy"
+        exit 1
+    fi
+
+    # Actualizar en la base de datos
+    sed -i "${linea_num}s/|[^|]*$/|${sysdate}/" "$database"
+
+    # Actualizar expiración del usuario Linux (el identificador es el usuario del sistema)
+    usermod -e "$sysdate" "$hwid_tok" 2>/dev/null
+    chage -E "$sysdate" "$hwid_tok" 2>/dev/null
+    usermod -U "$hwid_tok" 2>/dev/null
+    passwd -u "$hwid_tok" 2>/dev/null
+
+    echo ""
+    echo "=============================================="
+    echo "  FECHA DE VENCIMIENTO ACTUALIZADA"
+    echo "  Usuario: $usuario"
+    echo "  Fecha anterior: $fecha_actual"
+    echo "  Nueva fecha: $udata"
+    if [[ "$inputdate" =~ ^[0-9]+$ ]]; then
+        echo "  Días agregados: $inputdate"
+    fi
+    echo "=============================================="
+    echo ""
+    sleep 3
+    exit 0
+fi
+
+# ── Lógica original SSH (intacta) ──────────────────────
 
 database="/root/usuarios.db"
 
@@ -40,17 +198,17 @@ echo ""
 id=0
 while IFS=' ' read -r user limit; do
     [[ -z "$user" ]] && continue
-    
+
     # Verificar que el usuario existe en el sistema
     if ! grep -q "^$user:" /etc/passwd; then
         continue
     fi
-    
+
     id=$((id + 1))
-    
+
     # Obtener fecha de expiración
     expire="$(chage -l "$user" 2>/dev/null | grep -E "Account expires" | cut -d ':' -f2- | sed 's/^[[:space:]]*//')"
-    
+
     if [[ -z "$expire" ]] || [[ "$expire" == "never" ]]; then
         fecha="00/00/0000"
         estado="SIN FECHA"
@@ -62,7 +220,7 @@ while IFS=' ' read -r user limit; do
         else
             databr=$(date -d "$expire" +"%Y%m%d" 2>/dev/null)
             hoje=$(date -d today +"%Y%m%d")
-            
+
             if [ "$hoje" -ge "$databr" ]; then
                 estado="VENCIDO"
             else
@@ -70,7 +228,7 @@ while IFS=' ' read -r user limit; do
             fi
         fi
     fi
-    
+
     # Formato: [ID] - Usuario | Fecha | Estado
     printf "[%02d] - %-20s | %-10s | %s\n" "$id" "$user" "$fecha" "$estado"
 done < "$database"
@@ -176,14 +334,14 @@ else
         echo ""
         exit 1
     fi
-    
+
     if [[ $inputdate -lt 1 ]]; then
         echo ""
         echo "ERROR: Los días deben ser mayor que 0"
         echo ""
         exit 1
     fi
-    
+
     # Calcular fecha sumando días
     udata=$(date "+%d/%m/%Y" -d "+$inputdate days")
     sysdate="$(echo "$udata" | awk -v FS=/ -v OFS=- '{print $3,$2,$1}')"
