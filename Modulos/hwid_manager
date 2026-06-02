@@ -444,17 +444,3 @@ case "$1" in
         echo "Uso: hwid_manager [list|create|delete|renew|clean|info]"
         ;;
 esac
-EOF
-
-chmod +x /bin/hwid_manager
-
-# Corregir usuarios existentes - asignar contraseña = HWID
-echo "Corrigiendo usuarios HWID existentes..."
-while IFS='|' read -r nombre hwid exp; do
-    [[ -z "$nombre" ]] && continue
-    if grep -q "^$hwid:" /etc/passwd 2>/dev/null; then
-        echo "  Fijando contraseña para $nombre ($hwid)..."
-        echo "$hwid:$hwid" | chpasswd 2>/dev/null
-        echo "$hwid" > "/etc/SSHPlus/senha/$hwid"
-    fi
-done < /etc/SSHPlus/hwid.db
