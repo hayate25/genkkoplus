@@ -26,60 +26,41 @@ fmt_time() {
     printf "%02d:%02d:%02d" $((s/3600)) $(((s%3600)/60)) $((s%60))
 }
 
-# ─────────────────────────────────────────────
-# Resolver HWID → nombre de usuario
-# ─────────────────────────────────────────────
 hwid_to_user() {
     local hwid=$1
     grep -i "|${hwid}|" "$HWID_DB" 2>/dev/null | cut -d'|' -f1
 }
 
-# Resolver TOKEN → nombre de usuario
 token_to_user() {
     local token=$1
     grep -i "|${token}|" "$TOKEN_DB" 2>/dev/null | cut -d'|' -f1
 }
 
-# ─────────────────────────────────────────────
-# Detectar sesiones HWID activas via auth.log
-# Busca "Password auth succeeded" recientes con
-# un HWID (32 hex chars) que NO tenga "Exit" posterior
-# ─────────────────────────────────────────────
 get_hwid_sessions() {
-    # Obtener PIDs dropbear activos
     local active_pids
     active_pids=$(ps aux | awk '/dropbear/ && !/grep/' | awk '{print $2}')
-
     [ -z "$active_pids" ] && return
 
-    # Para cada PID activo buscar en auth.log su HWID autenticado
     while read -r pid; do
         [ -z "$pid" ] && continue
 
-        # Buscar linea "Password auth succeeded" que mencione este PID
-        # El formato es: dropbear[PID]: Password auth succeeded for 'HWID'
         hwid=$(grep "dropbear\[${pid}\].*Password auth succeeded" "$AUTH_LOG" 2>/dev/null \
                | tail -1 \
                | grep -oE "for '[a-f0-9]{32}'" \
                | grep -oE "[a-f0-9]{32}")
-
         [ -z "$hwid" ] && continue
 
-        # Verificar que el proceso sigue activo
         kill -0 "$pid" 2>/dev/null || continue
 
         username=$(hwid_to_user "$hwid")
         [ -z "$username" ] && username="[$hwid]"
 
-        # Tiempo de vida del proceso dropbear
         elapsed=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ')
 
-        # Bytes del proceso dropbear
         down=0; up=0
         if [ -r "/proc/$pid/io" ]; then
-            if [ -r "/proc/$pid/io" ]; then
-    down=$(awk '/^rchar:/{print $2}' /proc/$pid/io 2>/dev/null || echo 0)
-    up=$(awk   '/^wchar:/{print $2}' /proc/$pid/io 2>/dev/null || echo 0)
+            down=$(awk '/^rchar:/{print $2}' /proc/$pid/io 2>/dev/null || echo 0)
+            up=$(awk   '/^wchar:/{print $2}' /proc/$pid/io 2>/dev/null || echo 0)
         fi
 
         echo "$username|HWID-WS|$pid|${elapsed:-0}|${down:-0}|${up:-0}|$hwid"
@@ -87,10 +68,6 @@ get_hwid_sessions() {
     done <<< "$active_pids"
 }
 
-# ─────────────────────────────────────────────
-# Detectar sesiones SSH normales (OpenSSH)
-# usuarios reales del sistema
-# ─────────────────────────────────────────────
 get_ssh_sessions() {
     ps aux 2>/dev/null \
         | awk '$0~/sshd/ && $0!~/grep/ && $0!~/sshd -D/ && $0!~/\[priv\]/ && $0!~/listener/ {print $1"|"$2}' \
@@ -101,20 +78,15 @@ get_ssh_sessions() {
             elapsed=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ')
             down=0; up=0
             if [ -r "/proc/$pid/io" ]; then
-                if [ -r "/proc/$pid/io" ]; then
-    down=$(awk '/^rchar:/{print $2}' /proc/$pid/io 2>/dev/null || echo 0)
-    up=$(awk   '/^wchar:/{print $2}' /proc/$pid/io 2>/dev/null || echo 0)
+                down=$(awk '/^rchar:/{print $2}' /proc/$pid/io 2>/dev/null || echo 0)
+                up=$(awk   '/^wchar:/{print $2}' /proc/$pid/io 2>/dev/null || echo 0)
             fi
             echo "$u|SSH|$pid|${elapsed:-0}|${down:-0}|${up:-0}|-"
           done
 }
 
-# ─────────────────────────────────────────────
-# Detectar sesiones TOKEN activas
-# ─────────────────────────────────────────────
 get_token_sessions() {
     [ ! -f "$TOKEN_DB" ] && return
-    # Similar a HWID pero busca tokens en auth.log
     local active_pids
     active_pids=$(ps aux | awk '/dropbear/ && !/grep/' | awk '{print $2}')
     [ -z "$active_pids" ] && return
@@ -133,27 +105,19 @@ get_token_sessions() {
         elapsed=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ')
         down=0; up=0
         if [ -r "/proc/$pid/io" ]; then
-            if [ -r "/proc/$pid/io" ]; then
-    down=$(awk '/^rchar:/{print $2}' /proc/$pid/io 2>/dev/null || echo 0)
-    up=$(awk   '/^wchar:/{print $2}' /proc/$pid/io 2>/dev/null || echo 0)
+            down=$(awk '/^rchar:/{print $2}' /proc/$pid/io 2>/dev/null || echo 0)
+            up=$(awk   '/^wchar:/{print $2}' /proc/$pid/io 2>/dev/null || echo 0)
         fi
         echo "$username|TOKEN|$pid|${elapsed:-0}|${down:-0}|${up:-0}|$token"
     done <<< "$active_pids"
 }
 
-# ─────────────────────────────────────────────
-# Contar conexiones ws-epro activas hacia :90
-# ─────────────────────────────────────────────
 get_wsepro_conn_count() {
     ss -tnp 2>/dev/null \
         | grep -c "127.0.0.1:90.*ws-epro\|ws-epro.*127.0.0.1:90"
 }
 
-# ─────────────────────────────────────────────
-# IP real del cliente (desde ws-epro via ss)
-# ─────────────────────────────────────────────
 get_client_ip() {
-    # La IP real está en la conexión ws-epro:80 ←→ cliente externo
     ss -tnp 2>/dev/null \
         | awk '/ws-epro.*:80/ && /ESTAB/ {
             for(i=1;i<=NF;i++){
@@ -165,9 +129,6 @@ get_client_ip() {
         }' | head -1
 }
 
-# ─────────────────────────────────────────────
-# LOOP PRINCIPAL
-# ─────────────────────────────────────────────
 while true; do
     clear
     echo "=============================================="
@@ -179,7 +140,6 @@ while true; do
     total_hwid=$(grep -c "|" "$HWID_DB" 2>/dev/null || echo 0)
     total_token=$(grep -c "|" "$TOKEN_DB" 2>/dev/null || echo 0)
 
-    # Recolectar todas las sesiones
     mapfile -t hwid_sessions  < <(get_hwid_sessions)
     mapfile -t ssh_sessions   < <(get_ssh_sessions)
     mapfile -t token_sessions < <(get_token_sessions)
@@ -208,7 +168,6 @@ while true; do
             IFS='|' read -r username type pid elapsed down up identifier <<< "$entry"
             [ -z "$username" ] && continue
 
-            # Contar conexiones: para HWID contar túneles ws-epro activos
             if [ "$type" = "HWID-WS" ]; then
                 conn=$ws_conns
                 [ "$conn" -eq 0 ] && conn=1
