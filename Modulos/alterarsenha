@@ -6,7 +6,7 @@
 
 clear
 echo "=============================================="
-echo "           ALTERAR SENHA DE USUARIO"
+echo "           ALTERAR CONTRASEÑA DE USUARIO"
 echo "=============================================="
 echo ""
 
@@ -77,7 +77,7 @@ get_limit_by_id() {
 }
 
 # Listar usuarios con IDs y sus contraseñas
-echo "LISTA DE USUARIOS Y SUS SENHAS:"
+echo "LISTA DE USUARIOS Y SUS CONTRASEÑAS:"
 echo "----------------------------------------"
 echo ""
 
@@ -183,7 +183,7 @@ read password
 sizepass=$(echo ${#password})
 if [[ $sizepass -lt 4 ]]; then
     echo ""
-    echo "ERROR: Senha vacia o invalida! Use minimo 4 caracteres"
+    echo "ERROR: Contraseña vacia o invalida! Use minimo 4 caracteres"
     echo ""
     exit 1
 fi
@@ -216,7 +216,7 @@ remaining=$(ps aux | grep -v grep | grep "$usuario" | wc -l)
 
 echo ""
 echo "=============================================="
-echo "  SENHA ALTERADA CORRECTAMENTE"
+echo "  CONTRASEÑA ALTERADA CORRECTAMENTE"
 echo "  Usuario: $usuario"
 echo "  Nueva senha: $password"
 if [[ $disconnected -gt 0 ]]; then
