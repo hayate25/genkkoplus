@@ -86,7 +86,7 @@ menu_gestion_usuarios() {
                 case "$modo" in
                     SSH)   /bin/alterarlimite ;;
                     HWID)  /bin/editar_hwid ;;
-                    TOKEN) /bin/alterarsenha ;;
+                    TOKEN) /bin/token_manager setpass ;;
                 esac
                 ;;
             5)
