@@ -174,6 +174,7 @@ while true; do
                 echo ""; read -p "ENTER para continuar..."
             fi
             ;;
+      6) /bin/banner ;;
         0) exit 0 ;;
     esac
 done
