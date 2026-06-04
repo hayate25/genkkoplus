@@ -1,4 +1,3 @@
-cat > /bin/ssh_manager << 'EOF'
 #!/bin/bash
 # ssh_manager - Gestion de usuarios SSH (con desconexion forzada)
 
@@ -10,9 +9,9 @@ mkdir -p "$SENHA_DIR"
 touch "$DB_SSH"
 
 listar() {
-    echo "=========================================="
+    echo "======================================================================"
     echo "  USUARIOS SSH"
-    echo "=========================================="
+    echo "======================================================================"
     if [[ ! -s "$DB_SSH" ]]; then
         echo "  No hay usuarios SSH"
         return
@@ -21,10 +20,11 @@ listar() {
     # Obtener conexiones activas
     local conexiones=$(ss -tnp 2>/dev/null | grep "dropbear" | grep ESTAB)
     
-    echo "  ID | USUARIO | LIMITE | CONECTADO"
-    echo "  ---|---------|--------|----------"
+    echo "  ID | USUARIO  | LIM | CONECT | PASSWORD | EXPIRACION"
+    echo "  ---|----------|-----|--------|----------|------------"
     local i=1
-    while IFS=' ' read -r user limite; do
+    while IFS=' ' read -r user limite pass exp_date resto; do
+        [[ -z "$user" ]] && continue
         local estado="NO"
         if echo "$conexiones" | while read line; do
             pid=$(echo "$line" | grep -oP 'pid=\K[0-9]+')
@@ -32,10 +32,15 @@ listar() {
         done | grep -q "SI"; then
             estado="SI"
         fi
-        echo "  $i | $user | $limite | $estado"
+        
+        # Si no hay pass o exp en el db (usuarios viejos), mostrar N/A
+        local d_pass=${pass:-"N/A"}
+        local d_exp=${exp_date:-"N/A"}
+        
+        printf "  %2d | %-8s | %3s | %-6s | %-8s | %s\n" "$i" "$user" "$limite" "$estado" "$d_pass" "$d_exp"
         i=$((i+1))
     done < "$DB_SSH"
-    echo "=========================================="
+    echo "======================================================================"
 }
 
 crear() {
@@ -66,7 +71,8 @@ crear() {
     useradd -e "$final" -M -s /bin/false -p "$pass_crypt" "$username" 2>/dev/null
     
     if [[ $? -eq 0 ]]; then
-        echo "$username $limite" >> "$DB_SSH"
+        # Guardamos: usuario limite contraseña fecha_expiracion
+        echo "$username $limite $password $final" >> "$DB_SSH"
         echo "$password" > "$SENHA_DIR/$username"
         echo "  OK: Usuario $username creado"
         echo "  Expira: $final"
@@ -125,6 +131,3 @@ case "$1" in
         echo "Uso: ssh_manager [list|create|delete]"
         ;;
 esac
-EOF
-
-chmod +x /bin/ssh_manager
