@@ -152,6 +152,15 @@ if [[ "$modo" == "HWID" || "$modo" == "TOKEN" ]]; then
     usermod -U "$hwid_tok" 2>/dev/null
     passwd -u "$hwid_tok" 2>/dev/null
 
+    # ── Desbloqueo automático si el usuario está bloqueado ──
+    estado_passwd=$(passwd -S "$hwid_tok" 2>/dev/null | awk '{print $2}')
+    if [[ "$estado_passwd" == "L" || "$estado_passwd" == "LK" ]]; then
+        usermod -U "$hwid_tok" 2>/dev/null
+        passwd -u "$hwid_tok" 2>/dev/null
+        echo "  AVISO: El usuario $usuario estaba bloqueado y fue desbloqueado automáticamente."
+    fi
+    # ────────────────────────────────────────────────────────
+
     echo ""
     echo "=============================================="
     echo "  FECHA DE VENCIMIENTO ACTUALIZADA"
@@ -373,6 +382,17 @@ fi
 chage -E "$sysdate" "$usuario" 2>/dev/null
 
 if [ $? -eq 0 ]; then
+
+    # ── Desbloqueo automático si el usuario está bloqueado ──
+    estado_passwd=$(passwd -S "$usuario" 2>/dev/null | awk '{print $2}')
+    if [[ "$estado_passwd" == "L" || "$estado_passwd" == "LK" ]]; then
+        usermod -U "$usuario" 2>/dev/null
+        passwd -u "$usuario" 2>/dev/null
+        echo ""
+        echo "  AVISO: El usuario $usuario estaba bloqueado y fue desbloqueado automáticamente."
+    fi
+    # ────────────────────────────────────────────────────────
+
     echo ""
     echo "=============================================="
     echo "  FECHA DE VENCIMIENTO ACTUALIZADA"
