@@ -155,21 +155,17 @@ if [[ "$modo" == "HWID" || "$modo" == "TOKEN" ]]; then
     passwd -u "$hwid_tok" 2>/dev/null
 
     # ── Desbloqueo automático y eliminación de lista de bloqueados ──
-    # Para HWID/TOKEN, el usuario que se bloquea es $hwid_tok o $usuario según el modo
     user_to_check="$hwid_tok"
     [[ "$modo" == "TOKEN" ]] && user_to_check="$usuario"
     
     if grep -qxF "$user_to_check" "$LOCKED_LIST" 2>/dev/null; then
-        # 1. Restaurar contraseña si existe backup
         if [[ -f "$SENHA_DIR/${user_to_check}_bloqueado" ]]; then
             orig=$(cat "$SENHA_DIR/${user_to_check}_bloqueado")
             echo "$user_to_check:$orig" | chpasswd 2>/dev/null
             rm -f "$SENHA_DIR/${user_to_check}_bloqueado"
         fi
-        # 2. Desbloquear en el sistema
         usermod -U "$user_to_check" 2>/dev/null
         passwd -u "$user_to_check" 2>/dev/null
-        # 3. Eliminar de la lista de bloqueados
         sed -i "/^$user_to_check$/d" "$LOCKED_LIST" 2>/dev/null
         echo "  AVISO: El usuario $usuario estaba bloqueado. Se ha desbloqueado y eliminado de la lista."
     fi
@@ -204,7 +200,7 @@ fi
 get_user_by_id() {
     local id="$1"
     local current=1
-    while IFS=' ' read -r user limite; do
+    while IFS=' ' read -r user limite pass exp resto; do
         if [[ $current -eq $id ]]; then
             echo "$user"
             return
@@ -219,7 +215,7 @@ echo "--------------------------------------------"
 echo ""
 
 id=0
-while IFS=' ' read -r user limit; do
+while IFS=' ' read -r user limit pass exp resto; do
     [[ -z "$user" ]] && continue
 
     # Verificar que el usuario existe en el sistema
@@ -396,19 +392,19 @@ fi
 chage -E "$sysdate" "$usuario" 2>/dev/null
 
 if [ $? -eq 0 ]; then
+    # Actualizar la fecha en el archivo usuarios.db
+    # Buscamos la línea que empieza con el usuario y actualizamos la 4ta columna
+    sed -i "/^$usuario /s/^\([^ ]* [^ ]* [^ ]* \)[^ ]*/\1$sysdate/" "$database"
 
     # ── Desbloqueo automático y eliminación de lista de bloqueados ──
     if grep -qxF "$usuario" "$LOCKED_LIST" 2>/dev/null; then
-        # 1. Restaurar contraseña si existe backup
         if [[ -f "$SENHA_DIR/${usuario}_bloqueado" ]]; then
             orig=$(cat "$SENHA_DIR/${usuario}_bloqueado")
             echo "$usuario:$orig" | chpasswd 2>/dev/null
             rm -f "$SENHA_DIR/${usuario}_bloqueado"
         fi
-        # 2. Desbloquear en el sistema
         usermod -U "$usuario" 2>/dev/null
         passwd -u "$usuario" 2>/dev/null
-        # 3. Eliminar de la lista de bloqueados
         sed -i "/^$usuario$/d" "$LOCKED_LIST" 2>/dev/null
         echo ""
         echo "  AVISO: El usuario $usuario estaba bloqueado. Se ha desbloqueado y eliminado de la lista."
