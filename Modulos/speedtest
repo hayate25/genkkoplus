@@ -5,7 +5,7 @@ cor2='\033[0;34m'
 cor3='\033[1;35m'
 clear
 scor='\033[0m'
-echo -e "\E[44;1;37m    INSTALADOR UDP @diegovip7      \E[0m"
+echo -e "\E[44;1;37m    INSTALADOR UDP @sshgenkko      \E[0m"
 echo ""
 echo -e "
 \e[1;31m[\e[1;36m01\e[1;31m] \e[1;37m• \e[1;33mUDP DEBIAN  \e[ [1;31m
