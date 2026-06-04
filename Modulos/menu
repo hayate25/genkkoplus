@@ -150,6 +150,7 @@ while true; do
     echo "  [4] Backup de usuarios"
     echo "  [5] Instalar/Configurar"
     echo "  [5] Banner"
+    echo "  [6] Herramientas "
     echo "  [0] Salir"
     echo "=========================================="
     echo -n "  Opcion: "; read opc
@@ -168,7 +169,7 @@ while true; do
                 echo ""; read -p "ENTER para continuar..."
             fi
             ;;
-     6) banner ;;
+     6) /bin/tools ;;
         0) exit 0 ;;
     esac
 done
