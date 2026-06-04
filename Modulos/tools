@@ -1,0 +1,27 @@
+#!/bin/bash
+# /bin/tools
+tools_menu() {
+    while true; do
+        clear
+        echo "==============================="
+        echo "        HERRAMIENTAS           "
+        echo "==============================="
+        echo " [1] Banner "
+        echo " [2] Velocida de internet "
+        echo " [3] bloqueo de torrent "
+        echo " [4] Bloqueo DDOS "
+        echo "-------------------------------"
+        echo " [0] Volver"
+        echo "==============================="
+        read -rp " Opción: " opt
+        case "$opt" in
+            1) /bin/banner ;;
+            2) /bin/velocidad.sh ;;
+            3) /bin/blockt ;;
+            4) /bin/fai2ban.sh;;
+            0) break ;;
+            *) echo " Opción inválida"; sleep 1 ;;
+        esac
+    done
+}
+tools_menu
