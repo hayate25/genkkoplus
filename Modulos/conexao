@@ -1483,7 +1483,8 @@ fun_conexao() {
 -10- • MENU V2RAY $xv2ray
 -11- • Red Trafico  $trojansts
 -12- • VOLVER AL MENU Inicial 
--13- • SLOWDNS JoaquinH2 
+-13- • SLOWDNS JoaquinH2
+-14- • Badvpn
 -00- • SALIR "
 		echo ""
 		echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -1534,6 +1535,8 @@ fun_conexao() {
 		13 | 13)
 			wget -q -O slow.sh https://raw.githubusercontent.com/joaquin1444/instalador/refs/heads/main/slow.sh && chmod +x slow.sh && ./slow.sh
 			;;
+  14| 14)fun_badvpn
+     ;;
 		0 | 00)
 			echo -e "SALIENDO..."
 			sleep 2
