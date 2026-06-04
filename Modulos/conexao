@@ -1535,7 +1535,7 @@ fun_conexao() {
 		13 | 13)
 			wget -q -O slow.sh https://raw.githubusercontent.com/joaquin1444/instalador/refs/heads/main/slow.sh && chmod +x slow.sh && ./slow.sh
 			;;
-  14| 14)fun_badvpn
+  14| 14) /bin/badvpn
      ;;
 		0 | 00)
 			echo -e "SALIENDO..."
