@@ -149,7 +149,6 @@ while true; do
     echo "  [3] Informacion del VPS"
     echo "  [4] Backup de usuarios"
     echo "  [5] Instalar/Configurar"
-    echo "  [5] Banner"
     echo "  [6] Herramientas "
     echo "  [0] Salir"
     echo "=========================================="
