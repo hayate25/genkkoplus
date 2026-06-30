@@ -2,51 +2,56 @@
 database="/root/usuarios.db"
 echo $$ > /tmp/pids
 
-# ─── Detección Dropbear ───────────────────────────────────────────────────────
+# ─── Detección Dropbear (CORREGIDA) ───────────────────────────────────────────
+# Antes: detectaba el puerto vía ps aux (campo 17, poco fiable) y luego
+#        filtraba PIDs por substring de puerto -> generaba listas de PIDs
+#        incorrectas o vacías.
+# Ahora: se obtienen directamente los PIDs de los procesos dropbear hijos
+#        (uno por sesión) y se ancla la búsqueda en auth.log con
+#        "dropbear[PID]:" para evitar falsos positivos por substring.
+#        Además se usa la ULTIMA línea de login real (tail -n1) en vez de
+#        una variable $pidend que podía quedar con un valor obsoleto de
+#        una iteración anterior si el PID actual no tenía coincidencias.
 fun_drop() {
-    port_dropbear=$(ps aux | grep dropbear | awk 'NR==1{print $17}')
     log=/var/log/auth.log
     loginsukses='Password auth succeeded'
-    pids=$(ps ax | grep dropbear | grep " $port_dropbear" | awk '{print $1}')
+
+    # Todos los PIDs de procesos dropbear (cada sesión = un proceso hijo)
+    pids=$(pgrep -x dropbear)
+
     for pid in $pids; do
-        pidlogs=$(grep $pid $log | grep "$loginsukses" | awk '{print $3}')
-        i=0
-        for pidend in $pidlogs; do
-            let i=i+1
-        done
-        if [ $pidend ]; then
-            login=$(grep $pid $log | grep "$pidend" | grep "$loginsukses")
-            PID=$pid
-            user=$(echo $login | awk '{print $10}' | sed -r "s/'/ /g")
-            waktu=$(echo $login | awk '{print $2"-"$1,$3}')
-            while [ ${#waktu} -lt 13 ]; do waktu=$waktu" "; done
-            while [ ${#user} -lt 16 ]; do user=$user" "; done
-            while [ ${#PID} -lt 8 ];  do PID=$PID" ";  done
-            echo "$user $PID $waktu"
-        fi
+        # Anclado: solo líneas que mencionen exactamente este PID de dropbear
+        login=$(grep "dropbear\[$pid\]:" "$log" | grep "$loginsukses" | tail -n1)
+
+        # Si no hay login registrado para este PID, se ignora (antes seguía
+        # usando el $pidend de la vuelta anterior)
+        [ -z "$login" ] && continue
+
+        PID=$pid
+        user=$(echo "$login" | awk '{print $10}' | sed -r "s/'//g")
+        waktu=$(echo "$login" | awk '{print $2"-"$1,$3}')
+
+        while [ ${#waktu} -lt 13 ]; do waktu=$waktu" "; done
+        while [ ${#user} -lt 16 ]; do user=$user" "; done
+        while [ ${#PID} -lt 8 ];  do PID=$PID" ";  done
+
+        echo "$user $PID $waktu"
     done
 }
 
 # ─── Detección por proceso (ws-epro, Python proxy, WebSocket, etc.) ───────────
-# Busca procesos donde el nombre de usuario aparece como argumento
 fun_proc_count() {
     local target_user="$1"
     local count=0
 
-    # ws-epro: busca procesos que contengan el usuario en sus argumentos
     local wse=$(ps aux | grep -v grep | grep -E "ws-epro|wsepro" | grep "$target_user" | wc -l)
-
-    # Python proxy scripts: procesos python/python3 con el usuario como argumento
     local pyp=$(ps aux | grep -v grep | grep -E "python[23]?" | grep "$target_user" | wc -l)
-
-    # WebSocket genérico: procesos node/websockify/wstunnel con el usuario
     local wsg=$(ps aux | grep -v grep | grep -E "websockify|wstunnel|ws-tunnel" | grep "$target_user" | wc -l)
 
     count=$((wse + pyp + wsg))
     echo $count
 }
 
-# Devuelve los PIDs de procesos proxy asociados al usuario (para kill)
 fun_proc_pids() {
     local target_user="$1"
     ps aux | grep -v grep \
@@ -56,10 +61,8 @@ fun_proc_pids() {
 }
 
 # ─── Detección por conexiones SS (túneles activos del usuario) ────────────────
-# Cuenta conexiones ESTABLISHED vinculadas a procesos del usuario vía ss
 fun_ss_count() {
     local target_user="$1"
-    # Obtiene PIDs del usuario (excluyendo bash/sh para no contar su sesión de login)
     local user_pids=$(ps aux | grep -v grep | awk -v u="$target_user" '$1==u && $11!~/bash|sh$|sshd/ {print $2}')
     local count=0
     for p in $user_pids; do
@@ -69,15 +72,6 @@ fun_ss_count() {
     echo $count
 }
 
-# ─── [FUTURO] V2Ray / Xray ────────────────────────────────────────────────────
-# Descomenta y adapta cuando uses V2Ray/Xray con logs o API
-# fun_v2ray_count() {
-#     local target_user="$1"
-#     # Ejemplo con API de V2Ray (requiere habilitar API en config.json):
-#     # curl -s http://127.0.0.1:10085/v1/stats/user?name=$target_user | jq ...
-#     echo 0
-# }
-
 # ─── Total de conexiones combinadas por usuario ───────────────────────────────
 fun_total_count() {
     local target_user="$1"
@@ -85,7 +79,6 @@ fun_total_count() {
     local proc=$(fun_proc_count "$target_user")
     local ss_c=$(fun_ss_count "$target_user")
 
-    # Evita doble conteo: si proc ya cuenta lo que ss ve, usa solo el mayor
     local proxy_count=$proc
     [ $ss_c -gt $proc ] && proxy_count=$ss_c
 
@@ -96,17 +89,14 @@ fun_total_count() {
 fun_kill_user() {
     local target_user="$1"
 
-    # 1. Matar procesos Dropbear del usuario
     fun_drop | grep "$target_user" | awk '{print $2}' | while read p; do
         kill "$p" 2>/dev/null
     done
 
-    # 2. Matar procesos proxy (ws-epro, Python, WebSocket)
     fun_proc_pids "$target_user" | while read p; do
         kill "$p" 2>/dev/null
     done
 
-    # 3. Matar cualquier proceso remanente del usuario en ss ESTABLISHED
     local user_pids=$(ps aux | grep -v grep | awk -v u="$target_user" '$1==u {print $2}')
     for p in $user_pids; do
         if ss -tp | grep -q "pid=$p,"; then
@@ -131,7 +121,6 @@ while true; do
         s2ssh="$(echo $usline | cut -d' ' -f2)"
 
         if [ -z "$user" ]; then
-            echo "" > /dev/null
             continue
         fi
 
