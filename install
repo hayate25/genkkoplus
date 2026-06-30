@@ -1,4 +1,3 @@
-
 #!/bin/bash
 clear
 
@@ -186,12 +185,35 @@ crontab -r > /dev/null 2>&1
     echo "0 */6 * * * /bin/uexpired"
 ) | crontab -
 
+# /etc/autostart: se ejecuta al reiniciar la VPS (@reboot) y como respaldo
+# cada minuto (cron). Antes quedaba vacio (solo el comentario de cabecera),
+# por eso ningun daemon (droplimiter, limiter, monitor, sshmonitor) volvia
+# a levantarse tras un reinicio. Ahora cada daemon se verifica con pgrep
+# antes de lanzarlo, para no crear procesos duplicados cada minuto.
 cat > /etc/autostart << 'AUTOSTART'
 #!/bin/bash
 # INICIO AUTOMATICO SSHPLUS GENKKO
+# Se ejecuta via cron @reboot y cada minuto como respaldo (auto-respawn)
+
+DAEMONS=("droplimiter" "limiter" "monitor" "sshmonitor")
+
+for d in "${DAEMONS[@]}"; do
+    bin="/bin/$d"
+    [[ -x "$bin" ]] || continue
+
+    if ! pgrep -x "$d" > /dev/null 2>&1; then
+        sed -i 's/\r$//' "$bin" 2>/dev/null
+        nohup "$bin" >> "/root/${d}.log" 2>&1 &
+    fi
+done
 AUTOSTART
 chmod +x /etc/autostart
+sed -i 's/\r$//' /etc/autostart
 echo "    Cron configurado OK"
+echo "    Autostart configurado para: droplimiter, limiter, monitor, sshmonitor"
+
+# Lanzar los daemons ahora mismo, sin esperar al proximo minuto del cron
+/etc/autostart
 
 # Base de datos
 echo ""
