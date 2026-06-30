@@ -23,7 +23,7 @@ menu_gestion_usuarios() {
                 echo "  [7] Borrar expirados"
                 echo "  [8] Informacion usuarios"
                 echo "  [9] Bloquear/Desbloquear usuario"
-                echo "  [D] Crear usuario DEMO"
+                echo "  [10] Crear usuario DEMO"
                 ;;
             HWID)
                 echo "  [1] Crear usuario HWID"
@@ -34,7 +34,7 @@ menu_gestion_usuarios() {
                 echo "  [6] Borrar expirados"
                 echo "  [7] Informacion usuarios"
                 echo "  [9] Bloquear/Desbloquear usuario"
-                echo "  [D] Crear usuario DEMO"
+                echo "  [10] Crear usuario DEMO"
                 ;;
             TOKEN)
                 echo "  [1] Crear usuario TOKEN"
@@ -45,7 +45,7 @@ menu_gestion_usuarios() {
                 echo "  [6] Borrar expirados"
                 echo "  [7] Informacion usuarios"
                 echo "  [9] Bloquear/Desbloquear usuario"
-                echo "  [D] Crear usuario DEMO"
+                echo "  [10] Crear usuario DEMO"
                 ;;
         esac
         echo "=========================================="
@@ -116,7 +116,7 @@ menu_gestion_usuarios() {
             9)
                 /bin/bloquear
                 ;;
-            D|d)
+            10)
                 /bin/creardemo
                 ;;
             0)
