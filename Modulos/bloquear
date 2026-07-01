@@ -192,6 +192,39 @@ get_user_by_id() {
     echo ""
 }
 
+# Nueva función para obtener el NOMBRE visible a partir del ID
+get_name_by_id() {
+    local id="$1"
+    local current=1
+    case "$modo" in
+        SSH)
+            while IFS=' ' read -r user limite pass exp_date_db; do
+                user=$(echo "$user" | tr -d '\r')
+                [[ -z "$user" ]] && continue
+                [[ $current -eq $id ]] && echo "$user" && return
+                current=$((current+1))
+            done < "$DB_SSH" 2>/dev/null
+            ;;
+        HWID)
+            while IFS='|' read -r nombre hwid exp; do
+                nombre=$(echo "$nombre" | tr -d '\r')
+                [[ -z "$nombre" ]] && continue
+                [[ $current -eq $id ]] && echo "$nombre" && return
+                current=$((current+1))
+            done < "$DB_HWID" 2>/dev/null
+            ;;
+        TOKEN)
+            while IFS='|' read -r nombre token pass exp; do
+                nombre=$(echo "$nombre" | tr -d '\r')
+                [[ -z "$nombre" ]] && continue
+                [[ $current -eq $id ]] && echo "$nombre" && return
+                current=$((current+1))
+            done < "$DB_TOKEN" 2>/dev/null
+            ;;
+    esac
+    echo ""
+}
+
 auto_expire() {
     local hoy=$(date +%Y-%m-%d)
     local ahora_min=$(date +%H%M)
@@ -272,8 +305,28 @@ while true; do
     echo "=========================================="
     echo -n "  Opcion: "; read opt
     case $opt in
-        1) echo -n "  ID: "; read id; u=$(get_user_by_id "$id"); [[ -n "$u" ]] && bloquear_usuario "$u";;
-        2) echo -n "  ID: "; read id; u=$(get_user_by_id "$id"); [[ -n "$u" ]] && desbloquear_usuario "$u";;
+        1) echo -n "  ID: "; read id
+           u=$(get_user_by_id "$id")
+           nombre=$(get_name_by_id "$id")
+           if [[ -n "$u" ]]; then 
+               bloquear_usuario "$u"
+               clear
+               echo "BLOQUEADO: $nombre"
+               read -t 30 -p "Presione ENTER para continuar..." || true
+           fi
+           continue
+           ;;
+        2) echo -n "  ID: "; read id
+           u=$(get_user_by_id "$id")
+           nombre=$(get_name_by_id "$id")
+           if [[ -n "$u" ]]; then 
+               desbloquear_usuario "$u"
+               clear
+               echo "DESBLOQUEADO: $nombre"
+               read -t 30 -p "Presione ENTER para continuar..." || true
+           fi
+           continue
+           ;;
         3) configurar_hora_global;;
         4) configurar_hora_usuario;;
         0) exit 0;;
