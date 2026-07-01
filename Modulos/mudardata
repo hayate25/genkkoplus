@@ -9,6 +9,29 @@ modo=$(cat "$MODO_ACTUAL" 2>/dev/null || echo "SSH")
 LOCKED_LIST="/etc/SSHPlus/locked_users.db"
 SENHA_DIR="/etc/SSHPlus/senha"
 
+# ================================================================
+# MENSAJES DE SALIDA (limpios y predecibles para lectura por app)
+# ================================================================
+
+exito_menu() {
+    local mensaje="$1"
+    clear
+    echo ""
+    echo "$mensaje"
+    echo ""
+    read -t 30 -p "Presione ENTER para continuar (o espere 30s)... "
+    echo ""
+}
+
+fallo_menu() {
+    local mensaje="$1"
+    echo ""
+    echo "FALLO EL PROCESO"
+    echo "$mensaje"
+    echo ""
+    read -p "ENTER para continuar..."
+}
+
 clear
 echo "=============================================="
 echo "         EDITAR FECHA DE VENCIMIENTO - $modo"
@@ -24,8 +47,7 @@ if [[ "$modo" == "HWID" || "$modo" == "TOKEN" ]]; then
     esac
 
     if [ ! -f "$database" ] || [ ! -s "$database" ]; then
-        echo "  ERROR: No hay usuarios $modo registrados"
-        echo ""
+        fallo_menu "No hay usuarios $modo registrados"
         exit 1
     fi
 
@@ -55,7 +77,7 @@ if [[ "$modo" == "HWID" || "$modo" == "TOKEN" ]]; then
     done < "$database"
 
     if [[ $id -eq 0 ]]; then
-        echo "  No hay usuarios $modo registrados en el sistema."
+        fallo_menu "No hay usuarios $modo registrados en el sistema."
         exit 1
     fi
 
@@ -67,15 +89,15 @@ if [[ "$modo" == "HWID" || "$modo" == "TOKEN" ]]; then
     read option
 
     if [[ -z $option ]]; then
-        echo "  ERROR: Debe seleccionar un ID"
+        fallo_menu "Debe seleccionar un ID"
         exit 1
     fi
     if ! [[ "$option" =~ ^[0-9]+$ ]]; then
-        echo "  ERROR: Debe ingresar un número válido"
+        fallo_menu "Debe ingresar un número válido"
         exit 1
     fi
     if [[ $option -lt 1 ]] || [[ $option -gt $id ]]; then
-        echo "  ERROR: ID fuera de rango [1-$id]"
+        fallo_menu "ID fuera de rango [1-$id]"
         exit 1
     fi
 
@@ -94,7 +116,7 @@ if [[ "$modo" == "HWID" || "$modo" == "TOKEN" ]]; then
     done < "$database"
 
     if [[ -z "$usuario" ]]; then
-        echo "  ERROR: Usuario no encontrado"
+        fallo_menu "Usuario no encontrado"
         exit 1
     fi
 
@@ -113,7 +135,7 @@ if [[ "$modo" == "HWID" || "$modo" == "TOKEN" ]]; then
     read inputdate
 
     if [[ -z $inputdate ]]; then
-        echo "  ERROR: Debe ingresar una fecha o número de días"
+        fallo_menu "Debe ingresar una fecha o número de días"
         exit 1
     fi
 
@@ -122,11 +144,11 @@ if [[ "$modo" == "HWID" || "$modo" == "TOKEN" ]]; then
         udata="$inputdate"
     else
         if ! [[ "$inputdate" =~ ^[0-9]+$ ]]; then
-            echo "  ERROR: Debe ingresar un número de días válido"
+            fallo_menu "Debe ingresar un número de días válido"
             exit 1
         fi
         if [[ $inputdate -lt 1 ]]; then
-            echo "  ERROR: Los días deben ser mayor que 0"
+            fallo_menu "Los días deben ser mayor que 0"
             exit 1
         fi
         udata=$(date "+%d/%m/%Y" -d "+$inputdate days")
@@ -134,14 +156,14 @@ if [[ "$modo" == "HWID" || "$modo" == "TOKEN" ]]; then
     fi
 
     if ! date "+%Y-%m-%d" -d "$sysdate" > /dev/null 2>&1; then
-        echo "  ERROR: Fecha inválida o inexistente"
+        fallo_menu "Fecha inválida o inexistente"
         exit 1
     fi
 
     today="$(date +"%Y%m%d")"
     timemachine="$(date -d "$sysdate" +"%Y%m%d")"
     if [ "$today" -gt "$timemachine" ]; then
-        echo "  ERROR: La fecha ingresada es anterior a hoy"
+        fallo_menu "La fecha ingresada es anterior a hoy"
         exit 1
     fi
 
@@ -167,22 +189,10 @@ if [[ "$modo" == "HWID" || "$modo" == "TOKEN" ]]; then
         usermod -U "$user_to_check" 2>/dev/null
         passwd -u "$user_to_check" 2>/dev/null
         sed -i "/^$user_to_check$/d" "$LOCKED_LIST" 2>/dev/null
-        echo "  AVISO: El usuario $usuario estaba bloqueado. Se ha desbloqueado y eliminado de la lista."
     fi
     # ────────────────────────────────────────────────────────
 
-    echo ""
-    echo "=============================================="
-    echo "  FECHA DE VENCIMIENTO ACTUALIZADA"
-    echo "  Usuario: $usuario"
-    echo "  Fecha anterior: $fecha_actual"
-    echo "  Nueva fecha: $udata"
-    if [[ "$inputdate" =~ ^[0-9]+$ ]]; then
-        echo "  Días agregados: $inputdate"
-    fi
-    echo "=============================================="
-    echo ""
-    sleep 3
+    exito_menu "RENOVADO CORRECTAMENTE: $usuario"
     exit 0
 fi
 
@@ -191,8 +201,7 @@ fi
 database="/root/usuarios.db"
 
 if [ ! -f "$database" ]; then
-    echo "ERROR: Archivo $database NO encontrado"
-    echo ""
+    fallo_menu "Archivo $database NO encontrado"
     exit 1
 fi
 
@@ -254,7 +263,7 @@ done < "$database"
 
 # Si no hay usuarios
 if [[ $id -eq 0 ]]; then
-    echo "No hay usuarios registrados en el sistema."
+    fallo_menu "No hay usuarios registrados en el sistema."
     exit 1
 fi
 
@@ -269,25 +278,19 @@ read option
 
 # Validar entrada
 if [[ -z $option ]]; then
-    echo ""
-    echo "ERROR: Debe seleccionar un ID"
-    echo ""
+    fallo_menu "Debe seleccionar un ID"
     exit 1
 fi
 
 # Validar que sea número
 if ! [[ "$option" =~ ^[0-9]+$ ]]; then
-    echo ""
-    echo "ERROR: Debe ingresar un número válido"
-    echo ""
+    fallo_menu "Debe ingresar un número válido"
     exit 1
 fi
 
 # Validar rango
 if [[ $option -lt 1 ]] || [[ $option -gt $id ]]; then
-    echo ""
-    echo "ERROR: ID fuera de rango [1-$id]"
-    echo ""
+    fallo_menu "ID fuera de rango [1-$id]"
     exit 1
 fi
 
@@ -295,17 +298,13 @@ fi
 usuario=$(get_user_by_id "$option")
 
 if [[ -z $usuario ]]; then
-    echo ""
-    echo "ERROR: Usuario no encontrado"
-    echo ""
+    fallo_menu "Usuario no encontrado"
     exit 1
 fi
 
 # Verificar que el usuario existe en el sistema
 if ! grep -q "^$usuario:" /etc/passwd; then
-    echo ""
-    echo "ERROR: El usuario $usuario no existe en el sistema"
-    echo ""
+    fallo_menu "El usuario $usuario no existe en el sistema"
     exit 1
 fi
 
@@ -334,9 +333,7 @@ read inputdate
 
 # Validar entrada
 if [[ -z $inputdate ]]; then
-    echo ""
-    echo "ERROR: Debe ingresar una fecha o número de días"
-    echo ""
+    fallo_menu "Debe ingresar una fecha o número de días"
     exit 1
 fi
 
@@ -348,16 +345,12 @@ if [[ "$inputdate" =~ "/" ]]; then
 else
     # Son días
     if ! [[ "$inputdate" =~ ^[0-9]+$ ]]; then
-        echo ""
-        echo "ERROR: Debe ingresar un número de días válido"
-        echo ""
+        fallo_menu "Debe ingresar un número de días válido"
         exit 1
     fi
 
     if [[ $inputdate -lt 1 ]]; then
-        echo ""
-        echo "ERROR: Los días deben ser mayor que 0"
-        echo ""
+        fallo_menu "Los días deben ser mayor que 0"
         exit 1
     fi
 
@@ -368,11 +361,7 @@ fi
 
 # Validar que la fecha es válida
 if ! date "+%Y-%m-%d" -d "$sysdate" > /dev/null 2>&1; then
-    echo ""
-    echo "ERROR: Fecha inválida o inexistente"
-    echo "Use el formato DD/MM/AAAA (Ejemplo: 21/04/2024)"
-    echo "O ingrese un número de días (Ejemplo: 30)"
-    echo ""
+    fallo_menu "Fecha inválida o inexistente. Use DD/MM/AAAA o un número de días."
     exit 1
 fi
 
@@ -381,10 +370,7 @@ today="$(date -d today +"%Y%m%d")"
 timemachine="$(date -d "$sysdate" +"%Y%m%d")"
 
 if [ "$today" -gt "$timemachine" ]; then
-    echo ""
-    echo "ERROR: La fecha ingresada es anterior a hoy"
-    echo "Debe ingresar una fecha futura"
-    echo ""
+    fallo_menu "La fecha ingresada es anterior a hoy. Debe ingresar una fecha futura."
     exit 1
 fi
 
@@ -406,28 +392,12 @@ if [ $? -eq 0 ]; then
         usermod -U "$usuario" 2>/dev/null
         passwd -u "$usuario" 2>/dev/null
         sed -i "/^$usuario$/d" "$LOCKED_LIST" 2>/dev/null
-        echo ""
-        echo "  AVISO: El usuario $usuario estaba bloqueado. Se ha desbloqueado y eliminado de la lista."
     fi
     # ────────────────────────────────────────────────────────
 
-    echo ""
-    echo "=============================================="
-    echo "  FECHA DE VENCIMIENTO ACTUALIZADA"
-    echo "  Usuario: $usuario"
-    echo "  Fecha anterior: $fecha_actual"
-    echo "  Nueva fecha: $udata"
-    if [[ "$inputdate" =~ ^[0-9]+$ ]]; then
-        echo "  Días agregados: $inputdate"
-    fi
-    echo "=============================================="
-    echo ""
+    exito_menu "RENOVADO CORRECTAMENTE: $usuario"
+    exit 0
 else
-    echo ""
-    echo "ERROR: No se pudo actualizar la fecha de vencimiento"
-    echo ""
+    fallo_menu "No se pudo actualizar la fecha de vencimiento"
     exit 1
 fi
-
-sleep 3
-exit 0
