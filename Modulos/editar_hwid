@@ -1,9 +1,31 @@
-
 #!/bin/bash
 #GENKKOSSH
 # editar_hwid - Cambiar HWID de un usuario manteniendo sus datos
 
 DB_HWID="/etc/SSHPlus/hwid.db"
+
+# ================================================================
+# MENSAJES DE SALIDA (limpios y predecibles para lectura por app)
+# ================================================================
+
+exito_menu() {
+    local mensaje="$1"
+    clear
+    echo ""
+    echo "$mensaje"
+    echo ""
+    read -t 30 -p "Presione ENTER para continuar (o espere 30s)... "
+    echo ""
+}
+
+fallo_menu() {
+    local mensaje="$1"
+    echo ""
+    echo "FALLO EL PROCESO"
+    echo "$mensaje"
+    echo ""
+    read -p "ENTER para continuar..."
+}
 
 clear
 echo "=============================================="
@@ -43,8 +65,7 @@ if [[ -z "$id" ]] || [[ "$id" == "0" ]]; then
 fi
 
 if [[ ! "$id" =~ ^[0-9]+$ ]]; then
-    echo "  ERROR: ID invalido"
-    echo -n "  ENTER para continuar..."; read
+    fallo_menu "ID invalido"
     exit 1
 fi
 
@@ -55,8 +76,7 @@ hwid_actual=$(echo "$linea" | cut -d'|' -f2)
 exp=$(echo "$linea" | cut -d'|' -f3)
 
 if [[ -z "$nombre" ]] || [[ -z "$hwid_actual" ]]; then
-    echo "  ERROR: ID invalido o usuario no encontrado"
-    echo -n "  ENTER para continuar..."; read
+    fallo_menu "ID invalido o usuario no encontrado"
     exit 1
 fi
 
@@ -80,9 +100,7 @@ fi
 
 # Verificar que no exista ya
 if grep -q "|$hwid_nuevo|" "$DB_HWID" 2>/dev/null; then
-    echo ""
-    echo "  ERROR: El HWID '$hwid_nuevo' ya esta registrado en otro usuario"
-    echo -n "  ENTER para continuar..."; read
+    fallo_menu "El HWID '$hwid_nuevo' ya esta registrado en otro usuario"
     exit 1
 fi
 
@@ -156,14 +174,5 @@ if grep -q "^$hwid_actual:" /etc/passwd 2>/dev/null; then
     fi
 fi
 
-echo ""
-echo "  =========================================="
-echo "  HWID EDITADO EXITOSAMENTE"
-echo "    Nombre: $nombre"
-echo "    HWID anterior: $hwid_actual"
-echo "    HWID nuevo: $hwid_nuevo"
-echo "    Expiracion: $exp (sin cambios)"
-echo "  =========================================="
-echo ""
-echo -n "  ENTER para continuar..."; read
+exito_menu "EDITADO CORRECTAMENTE: $nombre"
 exit 0
