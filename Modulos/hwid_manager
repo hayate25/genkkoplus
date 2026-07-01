@@ -1,4 +1,3 @@
-
 #!/bin/bash
 # hwid_manager - Gestion de usuarios HWID (identificador unico)
 # Sin colores - Usa misma logica de desconexion que SSH
@@ -9,6 +8,20 @@ AUTH_LOG="/var/log/auth.log"
 mkdir -p /etc/SSHPlus
 mkdir -p /etc/SSHPlus/senha
 touch "$DB_HWID"
+
+# ================================================================
+# MENSAJE DE EXITO (limpia pantalla, espera ENTER o 30s, vuelve al menu)
+# ================================================================
+
+exito_menu() {
+    local mensaje="$1"
+    clear
+    echo ""
+    echo "$mensaje"
+    echo ""
+    read -t 30 -p "Presione ENTER para volver al menu (o espere 30s)... "
+    echo ""
+}
 
 # ================================================================
 # DETECTAR CONEXION ACTIVA DE UN USUARIO (UNIVERSAL)
@@ -168,21 +181,18 @@ crear() {
         # Guardar en base de datos
         echo "$nombre|$hwid|$final" >> "$DB_HWID"
         
-        echo ""
-        echo "  OK: Usuario HWID creado exitosamente"
-        echo "  Nombre: $nombre"
-        echo "  HWID (usuario): $hwid"
-        echo "  Password: $hwid"
-        echo "  Expira: $final"
+        exito_menu "CREADO CORRECTAMENTE: $nombre"
+        return
     else
         echo ""
+        echo "  FALLO EL PROCESO"
         echo "  ERROR: No se pudo crear el usuario en el sistema"
         echo "  Guardando solo en base de datos..."
         echo "$nombre|$hwid|$final" >> "$DB_HWID"
+        echo ""
+        read -p "  ENTER para continuar..."
+        return
     fi
-    
-    echo ""
-    read -p "  ENTER para continuar..."
 }
 
 # ================================================================
@@ -246,10 +256,7 @@ borrar() {
     sed -i "${id}d" "$DB_HWID"
     
     echo "  =========================================="
-    echo ""
-    echo "  OK: $nombre ($hwid) eliminado"
-    echo ""
-    read -p "  ENTER para continuar..."
+    exito_menu "BORRADO CORRECTAMENTE: $nombre"
 }
 
 # ================================================================
@@ -316,10 +323,7 @@ renovar() {
     usermod -U "$hwid" 2>/dev/null
     passwd -u "$hwid" 2>/dev/null
     
-    echo ""
-    echo "  OK: Expiracion de $nombre actualizada a $udata"
-    echo ""
-    read -p "  ENTER para continuar..."
+    exito_menu "RENOVADO CORRECTAMENTE: $nombre"
 }
 
 # ================================================================
@@ -367,12 +371,12 @@ limpiar() {
     
     if [[ $expirados -eq 0 ]]; then
         echo "  No hay usuarios expirados"
+        echo "=========================================="
+        echo ""
+        read -p "  ENTER para continuar..."
     else
-        echo "  OK: $expirados usuarios expirados borrados"
+        exito_menu "LIMPIEZA COMPLETADA: $expirados usuario(s) borrado(s)"
     fi
-    echo "=========================================="
-    echo ""
-    read -p "  ENTER para continuar..."
 }
 
 # ================================================================
