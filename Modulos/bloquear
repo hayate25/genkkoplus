@@ -28,6 +28,31 @@ else
     modo="SSH"
 fi
 
+# ================================================================
+# MENSAJES DE SALIDA (limpios y predecibles para lectura por app)
+# ================================================================
+
+exito_menu() {
+    local mensaje="$1"
+    clear
+    echo ""
+    echo "$mensaje"
+    echo ""
+    read -t 30 -p "Presione ENTER para continuar (o espere 30s)... "
+    echo ""
+}
+
+fallo_menu() {
+    local mensaje="$1"
+    clear
+    echo ""
+    echo "FALLO EL PROCESO"
+    echo "$mensaje"
+    echo ""
+    read -t 30 -p "Presione ENTER para continuar (o espere 30s)... "
+    echo ""
+}
+
 get_expire_time() {
     local user=$(echo "$1" | tr -d '\r')
     local hora_usuario=""
@@ -308,22 +333,22 @@ while true; do
         1) echo -n "  ID: "; read id
            u=$(get_user_by_id "$id")
            nombre=$(get_name_by_id "$id")
-           if [[ -n "$u" ]]; then 
+           if [[ -n "$u" ]]; then
                bloquear_usuario "$u"
-               clear
-               echo "BLOQUEADO: $nombre"
-               read -t 30 -p "Presione ENTER para continuar..." || true
+               exito_menu "BLOQUEADO CORRECTAMENTE: $nombre"
+           else
+               fallo_menu "ID invalido"
            fi
            continue
            ;;
         2) echo -n "  ID: "; read id
            u=$(get_user_by_id "$id")
            nombre=$(get_name_by_id "$id")
-           if [[ -n "$u" ]]; then 
+           if [[ -n "$u" ]]; then
                desbloquear_usuario "$u"
-               clear
-               echo "DESBLOQUEADO: $nombre"
-               read -t 30 -p "Presione ENTER para continuar..." || true
+               exito_menu "DESBLOQUEADO CORRECTAMENTE: $nombre"
+           else
+               fallo_menu "ID invalido"
            fi
            continue
            ;;
