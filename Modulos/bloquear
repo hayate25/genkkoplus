@@ -346,7 +346,7 @@ while true; do
            nombre=$(get_name_by_id "$id")
            if [[ -n "$u" ]]; then
                desbloquear_usuario "$u"
-               exito_menu "DESBLOQUEADO CORRECTAMENTE: $nombre"
+               exito_menu "LIBERADO CORRECTAMENTE: $nombre"
            else
                fallo_menu "ID invalido"
            fi
