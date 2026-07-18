@@ -138,11 +138,21 @@ menu_gestion_usuarios() {
 while true; do
     clear
     _expuser=$(cat /etc/SSHPlus/Exp 2>/dev/null || echo "0")
+
+    # Conteo por tipo de usuario
+    _ssh_count=$(wc -l < /root/usuarios.db 2>/dev/null || echo 0)
+    _hwid_count=$(wc -l < /etc/SSHPlus/hwid.db 2>/dev/null || echo 0)
+    _token_count=$(wc -l < /etc/SSHPlus/token.db 2>/dev/null || echo 0)
+    _total=$(( _ssh_count + _hwid_count + _token_count ))
+
     echo "=========================================="
     echo "         MENU PRINCIPAL SSHPLUS"
     echo "=========================================="
-    echo "  Usuarios: $(wc -l < /root/usuarios.db 2>/dev/null || echo 0)"
-    echo "  Expirados: $_expuser"
+    echo "  Usuarios SSH:   $_ssh_count"
+    echo "  Usuarios HWID:  $_hwid_count"
+    echo "  Usuarios TOKEN: $_token_count"
+    echo "  Total:          $_total"
+    echo "  Expirados:      $_expuser"
     echo "=========================================="
     echo "  [1] Gestion de usuarios"
     echo "  [2] Monitor de conexiones"
@@ -168,7 +178,7 @@ while true; do
                 echo ""; read -p "ENTER para continuar..."
             fi
             ;;
-     6) /bin/tools ;;
+        6) /bin/tools ;;
         0) exit 0 ;;
     esac
 done
