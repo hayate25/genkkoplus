@@ -8,6 +8,58 @@ AUTH_LOG="/var/log/auth.log"
 mkdir -p "$SENHA_DIR"
 touch "$DB_SSH"
 
+nombre_unico() {
+    local nombre="$1"
+    [ -z "$nombre" ] && return 1
+
+    if grep -q "^$nombre " "$DB_SSH" 2>/dev/null; then
+        return 1
+    fi
+
+    if grep -q "^$nombre|" /etc/SSHPlus/hwid.db 2>/dev/null; then
+        return 1
+    fi
+
+    if grep -q "^$nombre|" /etc/SSHPlus/token.db 2>/dev/null; then
+        return 1
+    fi
+
+    if grep -q "^$nombre:" /etc/passwd 2>/dev/null; then
+        return 1
+    fi
+
+    return 0
+}
+
+password_unico() {
+    local pass="$1"
+    local file
+    [ -z "$pass" ] && return 1
+
+    for file in "$SENHA_DIR"/*; do
+        [ -f "$file" ] || continue
+        if [ "$(cat "$file" 2>/dev/null)" = "$pass" ]; then
+            return 1
+        fi
+    done
+
+    return 0
+}
+
+sanitize_db() {
+    local tmp_db
+    tmp_db=$(mktemp)
+
+    while IFS=' ' read -r user limit pass exp_date resto; do
+        [[ -z "$user" ]] && continue
+        if grep -q "^$user:" /etc/passwd 2>/dev/null; then
+            printf '%s %s %s %s %s\n' "$user" "$limit" "$pass" "$exp_date" "$resto" >> "$tmp_db"
+        fi
+    done < "$DB_SSH"
+
+    mv "$tmp_db" "$DB_SSH"
+}
+
 listar() {
     echo "======================================================================"
     echo "  USUARIOS SSH"
@@ -47,17 +99,24 @@ crear() {
     echo "=========================================="
     echo "  CREAR USUARIO SSH"
     echo "=========================================="
+
+    sanitize_db
     
     read -p "  Usuario (min 4): " username
-    [[ -z "$username" ]] && return
-    
-    if grep -q "^$username " "$DB_SSH"; then
-        echo "  ERROR: Usuario ya existe"
-        return
+    [[ -z "$username" ]] && return 1
+
+    if ! nombre_unico "$username"; then
+        echo "  ERROR: El nombre '$username' ya existe"
+        return 1
     fi
     
     read -p "  Contrasena (min 4): " password
-    [[ -z "$password" ]] && return
+    [[ -z "$password" ]] && return 1
+
+    if ! password_unico "$password"; then
+        echo "  ERROR: La contraseña ya existe"
+        return 1
+    fi
     
     read -p "  Limite conexiones (1-99): " limite
     [[ ! "$limite" =~ ^[0-9]+$ ]] && limite=1
@@ -66,19 +125,34 @@ crear() {
     [[ ! "$dias" =~ ^[0-9]+$ ]] && dias=30
     
     local final=$(date "+%Y-%m-%d" -d "+$dias days")
-    local pass_crypt=$(perl -e 'print crypt($ARGV[0], "password")' "$password")
-    
-    useradd -e "$final" -M -s /bin/false -p "$pass_crypt" "$username" 2>/dev/null
-    
-    if [[ $? -eq 0 ]]; then
-        # Guardamos: usuario limite contraseña fecha_expiracion
-        echo "$username $limite $password $final" >> "$DB_SSH"
-        echo "$password" > "$SENHA_DIR/$username"
-        echo "  OK: Usuario $username creado"
-        echo "  Expira: $final"
-    else
-        echo "  ERROR: No se pudo crear"
+
+    useradd -e "$final" -M -s /bin/false "$username" >/dev/null 2>&1
+
+    if ! getent passwd "$username" >/dev/null 2>&1; then
+        echo "  FALLO EL PROCESO"
+        echo "  ERROR: No se pudo crear el usuario en el sistema"
+        echo "  No se guardo en la base de datos."
+        return 1
     fi
+
+    if ! echo "$username:$password" | chpasswd >/dev/null 2>&1; then
+        userdel -f "$username" >/dev/null 2>&1
+        rm -f "$SENHA_DIR/$username"
+        echo "  FALLO EL PROCESO"
+        echo "  ERROR: No se pudo asignar la contraseña"
+        echo "  No se guardo en la base de datos."
+        return 1
+    fi
+
+    # Guardamos: usuario limite contraseña fecha_expiracion
+    local tmp_db
+    tmp_db=$(mktemp)
+    cat "$DB_SSH" > "$tmp_db" 2>/dev/null
+    printf '%s %s %s %s\n' "$username" "$limite" "$password" "$final" >> "$tmp_db"
+    mv "$tmp_db" "$DB_SSH"
+    echo "$password" > "$SENHA_DIR/$username"
+    echo "  OK: Usuario $username creado"
+    echo "  Expira: $final"
 }
 
 borrar() {
@@ -86,7 +160,8 @@ borrar() {
     echo ""
     read -p "  ID a borrar: " id
     
-    local user=$(sed -n "${id}p" "$DB_SSH" | cut -d' ' -f1)
+    local linea=$(sed -n "${id}p" "$DB_SSH")
+    local user=$(echo "$linea" | cut -d' ' -f1)
     if [[ -z "$user" ]]; then
         echo "  ERROR: ID invalido"
         return
@@ -116,7 +191,9 @@ borrar() {
     userdel -f "$user" 2>/dev/null
     
     # Limpiar archivos
-    sed -i "${id}d" "$DB_SSH" 2>/dev/null
+    local tmp_db=$(mktemp)
+    grep -Fv -- "$linea" "$DB_SSH" > "$tmp_db" 2>/dev/null
+    mv "$tmp_db" "$DB_SSH"
     rm -f "$SENHA_DIR/$user" 2>/dev/null
     
     echo "  OK: Usuario $user eliminado"
