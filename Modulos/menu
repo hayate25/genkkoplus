@@ -5,6 +5,10 @@ MODO_ACTUAL="/etc/SSHPlus/modo_actual.cfg"
 if [ ! -f "$MODO_ACTUAL" ]; then
     echo "SSH" > "$MODO_ACTUAL"
 fi
+pausar_menu() {
+    echo ""
+    read -p "  ENTER para continuar..." -r
+}
 menu_gestion_usuarios() {
     while true; do
         modo=$(cat "$MODO_ACTUAL")
@@ -15,35 +19,32 @@ menu_gestion_usuarios() {
         case "$modo" in
             SSH)
                 echo "  [1] Crear usuario SSH"
-                echo "  [2] Listar usuarios SSH"
+                echo "  [2] Información / listar usuarios SSH"
                 echo "  [3] Borrar usuario SSH"
                 echo "  [4] Editar limite conexiones"
                 echo "  [5] Editar contraseña"
                 echo "  [6] Renovar expiracion"
                 echo "  [7] Borrar expirados"
-                echo "  [8] Informacion usuarios"
                 echo "  [9] Bloquear/Desbloquear usuario"
                 echo "  [10] Crear usuario DEMO"
                 ;;
             HWID)
                 echo "  [1] Crear usuario HWID"
-                echo "  [2] Listar usuarios HWID"
+                echo "  [2] Información / listar usuarios HWID"
                 echo "  [3] Borrar usuario HWID"
                 echo "  [4] Editar HWID"
                 echo "  [5] Renovar expiracion"
                 echo "  [6] Borrar expirados"
-                echo "  [7] Informacion usuarios"
                 echo "  [9] Bloquear/Desbloquear usuario"
                 echo "  [10] Crear usuario DEMO"
                 ;;
             TOKEN)
                 echo "  [1] Crear usuario TOKEN"
-                echo "  [2] Listar usuarios TOKEN"
+                echo "  [2] Información / listar usuarios TOKEN"
                 echo "  [3] Borrar usuario TOKEN"
                 echo "  [4] Editar contraseña"
                 echo "  [5] Renovar expiracion"
                 echo "  [6] Borrar expirados"
-                echo "  [7] Informacion usuarios"
                 echo "  [9] Bloquear/Desbloquear usuario"
                 echo "  [10] Crear usuario DEMO"
                 ;;
@@ -60,12 +61,13 @@ menu_gestion_usuarios() {
                     HWID)  /bin/hwid_manager create ;;
                     TOKEN) /bin/token_manager create ;;
                 esac
+                pausar_menu
                 ;;
             2)
                 case "$modo" in
-                    SSH)   /bin/ssh_manager list ;;
-                    HWID)  /bin/hwid_manager list ;;
-                    TOKEN) /bin/token_manager list ;;
+                    SSH)   /bin/infousers ;;
+                    HWID)  /bin/infousers ;;
+                    TOKEN) /bin/infousers ;;
                 esac
                 echo ""; read -p "ENTER para continuar..."
                 ;;
@@ -75,6 +77,7 @@ menu_gestion_usuarios() {
                     HWID)  /bin/hwid_manager delete ;;
                     TOKEN) /bin/token_manager delete ;;
                 esac
+                pausar_menu
                 ;;
             4)
                 case "$modo" in
@@ -82,6 +85,7 @@ menu_gestion_usuarios() {
                     HWID)  /bin/editar_hwid ;;
                     TOKEN) /bin/alterarsenha ;;
                 esac
+                pausar_menu
                 ;;
             5)
                 case "$modo" in
@@ -89,6 +93,7 @@ menu_gestion_usuarios() {
                     HWID)  /bin/mudardata ;;
                     TOKEN) /bin/mudardata ;;
                 esac
+                pausar_menu
                 ;;
             6)
                 case "$modo" in
@@ -96,6 +101,7 @@ menu_gestion_usuarios() {
                     HWID)  /bin/expcleaner ;;
                     TOKEN) /bin/expcleaner ;;
                 esac
+                pausar_menu
                 ;;
             7)
                 case "$modo" in
@@ -115,9 +121,11 @@ menu_gestion_usuarios() {
                 ;;
             9)
                 /bin/bloquear
+                pausar_menu
                 ;;
             10)
                 /bin/creardemo
+                pausar_menu
                 ;;
             0)
                 clear
