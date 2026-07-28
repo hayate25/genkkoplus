@@ -9,6 +9,73 @@ mkdir -p /etc/SSHPlus
 mkdir -p "$SENHA_DIR"
 touch "$DB_TOKEN"
 
+nombre_unico() {
+    local nombre="$1"
+    [ -z "$nombre" ] && return 1
+
+    if grep -q "^$nombre|" "$DB_TOKEN" 2>/dev/null; then
+        return 1
+    fi
+
+    if grep -q "^$nombre " /root/usuarios.db 2>/dev/null; then
+        return 1
+    fi
+
+    if grep -q "^$nombre|" /etc/SSHPlus/hwid.db 2>/dev/null; then
+        return 1
+    fi
+
+    if grep -q "^$nombre:" /etc/passwd 2>/dev/null; then
+        return 1
+    fi
+
+    return 0
+}
+
+password_unico() {
+    local pass="$1"
+    local file
+    [ -z "$pass" ] && return 1
+
+    for file in "$SENHA_DIR"/*; do
+        [ -f "$file" ] || continue
+        if [ "$(cat "$file" 2>/dev/null)" = "$pass" ]; then
+            return 1
+        fi
+    done
+
+    return 0
+}
+
+is_duplicate_token() {
+    local token="$1"
+    [ -z "$token" ] && return 0
+
+    if awk -F'|' -v value="$token" '$2 == value { found=1 } END { exit found ? 0 : 1 }' "$DB_TOKEN" 2>/dev/null; then
+        return 1
+    fi
+
+    if getent passwd "$token" >/dev/null 2>&1; then
+        return 1
+    fi
+
+    return 0
+}
+
+sanitize_db() {
+    local tmp_db
+    tmp_db=$(mktemp)
+
+    while IFS='|' read -r nombre token pass exp; do
+        [[ -z "$nombre" ]] && continue
+        if grep -q "^$token:" /etc/passwd 2>/dev/null; then
+            printf '%s|%s|%s|%s\n' "$nombre" "$token" "$pass" "$exp" >> "$tmp_db"
+        fi
+    done < "$DB_TOKEN"
+
+    mv "$tmp_db" "$DB_TOKEN"
+}
+
 # Funcion: Listar usuarios TOKEN
 listar() {
     echo "=========================================="
@@ -37,38 +104,70 @@ crear() {
     echo "=========================================="
     echo "  CREAR USUARIO TOKEN"
     echo "=========================================="
+
+    sanitize_db
     
     read -p "  Nombre identificador: " nombre
-    [[ -z "$nombre" ]] && return
+    [[ -z "$nombre" ]] && return 1
+
+    if ! nombre_unico "$nombre"; then
+        echo "  ERROR: El nombre '$nombre' ya existe"
+        return 1
+    fi
     
     read -p "  TOKEN: " token
     token=$(echo "$token" | tr -d ' ')
-    [[ -z "$token" ]] && return
+    [[ -z "$token" ]] && return 1
     
-    if grep -q "|$token|" "$DB_TOKEN"; then
+    if awk -F'|' -v value="$token" '$2 == value { found=1 } END { exit found ? 0 : 1 }' "$DB_TOKEN" 2>/dev/null; then
         echo "  ERROR: TOKEN ya existe"
-        return
+        return 1
+    fi
+
+    if getent passwd "$token" >/dev/null 2>&1; then
+        echo "  ERROR: TOKEN ya existe"
+        return 1
     fi
     
     read -p "  Contrasena SSH: " password
-    [[ -z "$password" ]] && return
+    [[ -z "$password" ]] && return 1
+
+    if ! password_unico "$password"; then
+        echo "  ERROR: La contraseña ya existe"
+        return 1
+    fi
     
     read -p "  Dias expiracion (1-365): " dias
     [[ ! "$dias" =~ ^[0-9]+$ ]] && dias=30
     
     local final=$(date "+%Y-%m-%d" -d "+$dias days")
-    local pass_crypt=$(perl -e 'print crypt($ARGV[0], "password")' "$password")
-    
-    useradd -e "$final" -M -s /bin/false -p "$pass_crypt" "$token" 2>/dev/null
-    
-    if [[ $? -eq 0 ]]; then
-        echo "$nombre|$token|$password|$final" >> "$DB_TOKEN"
-        echo "$password" > "$SENHA_DIR/$token"
-        echo "  OK: TOKEN $nombre creado"
-        echo "  Expira: $final"
-    else
-        echo "  ERROR: No se pudo crear"
+
+    useradd -e "$final" -M -s /bin/false "$token" >/dev/null 2>&1
+
+    if ! getent passwd "$token" >/dev/null 2>&1; then
+        echo "  FALLO EL PROCESO"
+        echo "  ERROR: No se pudo crear el usuario en el sistema"
+        echo "  No se guardo en la base de datos."
+        return 1
     fi
+
+    if ! echo "$token:$password" | chpasswd >/dev/null 2>&1; then
+        userdel -f "$token" >/dev/null 2>&1
+        rm -f "$SENHA_DIR/$token"
+        echo "  FALLO EL PROCESO"
+        echo "  ERROR: No se pudo asignar la contraseña"
+        echo "  No se guardo en la base de datos."
+        return 1
+    fi
+
+    local tmp_db
+    tmp_db=$(mktemp)
+    cat "$DB_TOKEN" > "$tmp_db" 2>/dev/null
+    printf '%s|%s|%s|%s\n' "$nombre" "$token" "$password" "$final" >> "$tmp_db"
+    mv "$tmp_db" "$DB_TOKEN"
+    echo "$password" > "$SENHA_DIR/$token"
+    echo "  OK: TOKEN $nombre creado"
+    echo "  Expira: $final"
 }
 
 # Funcion: Borrar usuario TOKEN
@@ -90,7 +189,9 @@ borrar() {
     
     pkill -u "$token" 2>/dev/null
     userdel -f "$token" 2>/dev/null
-    sed -i "${id}d" "$DB_TOKEN"
+    local tmp_db=$(mktemp)
+    grep -Fv -- "$linea" "$DB_TOKEN" > "$tmp_db" 2>/dev/null
+    mv "$tmp_db" "$DB_TOKEN"
     rm -f "$SENHA_DIR/$token"
     echo "  OK: $nombre borrado"
 }
