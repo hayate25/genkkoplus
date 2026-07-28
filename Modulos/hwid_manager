@@ -4,10 +4,78 @@
 
 DB_HWID="/etc/SSHPlus/hwid.db"
 AUTH_LOG="/var/log/auth.log"
+SENHA_DIR="/etc/SSHPlus/senha"
 
 mkdir -p /etc/SSHPlus
-mkdir -p /etc/SSHPlus/senha
+mkdir -p "$SENHA_DIR"
 touch "$DB_HWID"
+
+nombre_unico() {
+    local nombre="$1"
+    [ -z "$nombre" ] && return 1
+
+    if grep -q "^$nombre|" "$DB_HWID" 2>/dev/null; then
+        return 1
+    fi
+
+    if grep -q "^$nombre " /root/usuarios.db 2>/dev/null; then
+        return 1
+    fi
+
+    if grep -q "^$nombre|" /etc/SSHPlus/token.db 2>/dev/null; then
+        return 1
+    fi
+
+    if grep -q "^$nombre:" /etc/passwd 2>/dev/null; then
+        return 1
+    fi
+
+    return 0
+}
+
+password_unico() {
+    local pass="$1"
+    local file
+    [ -z "$pass" ] && return 1
+
+    for file in "$SENHA_DIR"/*; do
+        [ -f "$file" ] || continue
+        if [ "$(cat "$file" 2>/dev/null)" = "$pass" ]; then
+            return 1
+        fi
+    done
+
+    return 0
+}
+
+is_duplicate_hwid() {
+    local hwid="$1"
+    [ -z "$hwid" ] && return 0
+
+    if awk -F'|' -v value="$hwid" '$2 == value { found=1 } END { exit found ? 0 : 1 }' "$DB_HWID" 2>/dev/null; then
+        return 1
+    fi
+
+    if getent passwd "$hwid" >/dev/null 2>&1; then
+        return 1
+    fi
+
+    return 0
+}
+
+sanitize_db() {
+    local tmp_db
+    tmp_db=$(mktemp)
+
+    while IFS='|' read -r nombre hwid exp; do
+        [[ -z "$nombre" ]] && continue
+        if grep -q "^$hwid:" /etc/passwd 2>/dev/null; then
+            printf '%s|%s|%s\n' "$nombre" "$hwid" "$exp" >> "$tmp_db"
+        fi
+    done < "$DB_HWID"
+
+    mv "$tmp_db" "$DB_HWID"
+}
 
 # ================================================================
 # MENSAJE DE EXITO (limpia pantalla, espera ENTER o 30s, vuelve al menu)
@@ -130,24 +198,35 @@ crear() {
     echo "=========================================="
     echo "  CREAR USUARIO HWID"
     echo "=========================================="
+
+    sanitize_db
     
     read -p "  Nombre identificador: " nombre
-    [[ -z "$nombre" ]] && echo "  Cancelado" && return
+    [[ -z "$nombre" ]] && echo "  Cancelado" && return 1
     
-    # Verificar si ya existe
-    if grep -q "^$nombre|" "$DB_HWID" 2>/dev/null; then
+    if ! nombre_unico "$nombre"; then
         echo "  ERROR: El nombre '$nombre' ya existe"
-        return
+        return 1
     fi
     
     read -p "  HWID del dispositivo: " hwid
     hwid=$(echo "$hwid" | tr -d ' ')
-    [[ -z "$hwid" ]] && echo "  Cancelado" && return
+    [[ -z "$hwid" ]] && echo "  Cancelado" && return 1
     
     # Verificar HWID duplicado
-    if grep -q "|$hwid|" "$DB_HWID" 2>/dev/null; then
+    if awk -F'|' -v value="$hwid" '$2 == value { found=1 } END { exit found ? 0 : 1 }' "$DB_HWID" 2>/dev/null; then
         echo "  ERROR: El HWID '$hwid' ya esta registrado"
-        return
+        return 1
+    fi
+
+    if getent passwd "$hwid" >/dev/null 2>&1; then
+        echo "  ERROR: El HWID '$hwid' ya esta registrado"
+        return 1
+    fi
+
+    if ! password_unico "$hwid"; then
+        echo "  ERROR: La contraseña ya existe"
+        return 1
     fi
     
     # Verificar si ya existe como usuario Linux y limpiar
@@ -164,35 +243,42 @@ crear() {
     local final=$(date "+%Y-%m-%d" -d "+$dias days")
     
     # Crear usuario Linux con el HWID como login Y como contraseña (igual que demo)
-    local pass_crypt=$(perl -e 'print crypt($ARGV[0], "salt")' "$hwid" 2>/dev/null)
-    
-    if [ -n "$pass_crypt" ]; then
-        useradd -e "$final" -M -s /bin/false -p "$pass_crypt" "$hwid" 2>/dev/null
-    else
-        # Fallback si perl falla
-        useradd -e "$final" -M -s /bin/false "$hwid" 2>/dev/null
-        echo "$hwid:$hwid" | chpasswd 2>/dev/null
-    fi
-    
-    if [ $? -eq 0 ] || grep -q "^$hwid:" /etc/passwd 2>/dev/null; then
-        # Guardar contraseña (el HWID mismo)
-        echo "$hwid" > "/etc/SSHPlus/senha/$hwid"
-        
-        # Guardar en base de datos
-        echo "$nombre|$hwid|$final" >> "$DB_HWID"
-        
-        exito_menu "CREADO CORRECTAMENTE: $nombre"
-        return
-    else
+    useradd -e "$final" -M -s /bin/false "$hwid" >/dev/null 2>&1
+
+    if ! getent passwd "$hwid" >/dev/null 2>&1; then
         echo ""
         echo "  FALLO EL PROCESO"
         echo "  ERROR: No se pudo crear el usuario en el sistema"
-        echo "  Guardando solo en base de datos..."
-        echo "$nombre|$hwid|$final" >> "$DB_HWID"
+        echo "  No se guardo en la base de datos."
         echo ""
         read -p "  ENTER para continuar..."
-        return
+        return 1
     fi
+
+    if ! echo "$hwid:$hwid" | chpasswd >/dev/null 2>&1; then
+        userdel -f "$hwid" >/dev/null 2>&1
+        rm -f "/etc/SSHPlus/senha/$hwid"
+        echo ""
+        echo "  FALLO EL PROCESO"
+        echo "  ERROR: No se pudo asignar la contraseña"
+        echo "  No se guardo en la base de datos."
+        echo ""
+        read -p "  ENTER para continuar..."
+        return 1
+    fi
+
+    # Guardar contraseña (el HWID mismo)
+    echo "$hwid" > "/etc/SSHPlus/senha/$hwid"
+
+    # Guardar en base de datos solo si el usuario existe y la contraseña fue asignada
+    local tmp_db
+    tmp_db=$(mktemp)
+    cat "$DB_HWID" > "$tmp_db" 2>/dev/null
+    printf '%s|%s|%s\n' "$nombre" "$hwid" "$final" >> "$tmp_db"
+    mv "$tmp_db" "$DB_HWID"
+
+    exito_menu "CREADO CORRECTAMENTE: $nombre"
+    return 0
 }
 
 # ================================================================
@@ -251,9 +337,23 @@ borrar() {
     rm -rf "/home/$hwid" 2>/dev/null
     rm -f "/etc/SSHPlus/senha/$hwid"
     
-    # PASO 4: Borrar de la base de datos
+    # PASO 4: Borrar de la base de datos y limpiar rastros
     echo "  Limpiando base de datos..."
-    sed -i "${id}d" "$DB_HWID"
+    local tmp_db=$(mktemp)
+    grep -Fv -- "$linea" "$DB_HWID" > "$tmp_db" 2>/dev/null
+    mv "$tmp_db" "$DB_HWID"
+
+    if [ -f /etc/SSHPlus/temp_users.db ]; then
+        local tmp_temp=$(mktemp)
+        grep -Fv -- "$nombre|HWID|" /etc/SSHPlus/temp_users.db > "$tmp_temp" 2>/dev/null
+        mv "$tmp_temp" /etc/SSHPlus/temp_users.db
+    fi
+
+    if [ -f /etc/SSHPlus/locked_users.db ]; then
+        local tmp_locked=$(mktemp)
+        grep -Fvx -- "$hwid" /etc/SSHPlus/locked_users.db > "$tmp_locked" 2>/dev/null
+        mv "$tmp_locked" /etc/SSHPlus/locked_users.db
+    fi
     
     echo "  =========================================="
     exito_menu "BORRADO CORRECTAMENTE: $nombre"
