@@ -5,6 +5,7 @@
 DB_HWID="/etc/SSHPlus/hwid.db"
 AUTH_LOG="/var/log/auth.log"
 SENHA_DIR="/etc/SSHPlus/senha"
+LOCKED_LIST="/etc/SSHPlus/locked_users.db"
 
 mkdir -p /etc/SSHPlus
 mkdir -p "$SENHA_DIR"
@@ -422,6 +423,18 @@ renovar() {
     chage -E "$sysdate" "$hwid" 2>/dev/null
     usermod -U "$hwid" 2>/dev/null
     passwd -u "$hwid" 2>/dev/null
+
+    # ── Desbloqueo automático y eliminación de lista de bloqueados ──
+    if grep -qxF "$hwid" "$LOCKED_LIST" 2>/dev/null; then
+        if [[ -f "$SENHA_DIR/$hwid" ]]; then
+            orig=$(cat "$SENHA_DIR/$hwid" | tr -d '\r')
+            echo "$hwid:$orig" | chpasswd 2>/dev/null
+        fi
+        usermod -U "$hwid" 2>/dev/null
+        passwd -u "$hwid" 2>/dev/null
+        sed -i "/^$hwid$/d" "$LOCKED_LIST" 2>/dev/null
+    fi
+    # ────────────────────────────────────────────────────────
     
     exito_menu "RENOVADO CORRECTAMENTE: $nombre"
 }
