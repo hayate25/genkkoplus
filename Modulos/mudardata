@@ -181,10 +181,9 @@ if [[ "$modo" == "HWID" || "$modo" == "TOKEN" ]]; then
     [[ "$modo" == "TOKEN" ]] && user_to_check="$usuario"
     
     if grep -qxF "$user_to_check" "$LOCKED_LIST" 2>/dev/null; then
-        if [[ -f "$SENHA_DIR/${user_to_check}_bloqueado" ]]; then
-            orig=$(cat "$SENHA_DIR/${user_to_check}_bloqueado")
+        if [[ -f "$SENHA_DIR/$user_to_check" ]]; then
+            orig=$(cat "$SENHA_DIR/$user_to_check" | tr -d '\r')
             echo "$user_to_check:$orig" | chpasswd 2>/dev/null
-            rm -f "$SENHA_DIR/${user_to_check}_bloqueado"
         fi
         usermod -U "$user_to_check" 2>/dev/null
         passwd -u "$user_to_check" 2>/dev/null
@@ -384,10 +383,9 @@ if [ $? -eq 0 ]; then
 
     # ── Desbloqueo automático y eliminación de lista de bloqueados ──
     if grep -qxF "$usuario" "$LOCKED_LIST" 2>/dev/null; then
-        if [[ -f "$SENHA_DIR/${usuario}_bloqueado" ]]; then
-            orig=$(cat "$SENHA_DIR/${usuario}_bloqueado")
+        if [[ -f "$SENHA_DIR/$usuario" ]]; then
+            orig=$(cat "$SENHA_DIR/$usuario" | tr -d '\r')
             echo "$usuario:$orig" | chpasswd 2>/dev/null
-            rm -f "$SENHA_DIR/${usuario}_bloqueado"
         fi
         usermod -U "$usuario" 2>/dev/null
         passwd -u "$usuario" 2>/dev/null
@@ -401,3 +399,4 @@ else
     fallo_menu "No se pudo actualizar la fecha de vencimiento"
     exit 1
 fi
+,
