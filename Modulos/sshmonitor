@@ -26,9 +26,26 @@ fmt_time() {
     printf "%02d:%02d:%02d" $((s/3600)) $(((s%3600)/60)) $((s%60))
 }
 
+normalize_hwid() {
+    local hwid=${1:-}
+    [ -z "$hwid" ] && echo "" && return
+    hwid=$(echo "$hwid" | tr -d ' ' | tr '[:upper:]' '[:lower:]')
+    hwid="${hwid#h}"
+    echo "$hwid"
+}
+
 hwid_to_user() {
-    local hwid=$1
-    grep -i "|${hwid}|" "$HWID_DB" 2>/dev/null | cut -d'|' -f1
+    local hwid
+    hwid=$(normalize_hwid "$1")
+    [ -z "$hwid" ] && return
+    
+    # Buscar en hwid.db probando tanto en la columna 1 como en la columna 2
+    awk -F'|' -v value="$hwid" 'BEGIN { IGNORECASE=1 } {
+        r1 = $1; sub(/^[hH]/, "", r1);
+        r2 = $2; sub(/^[hH]/, "", r2);
+        if (tolower(r1) == tolower(value)) { print $2; exit }
+        if (tolower(r2) == tolower(value)) { print $1; exit }
+    }' "$HWID_DB" 2>/dev/null
 }
 
 token_to_user() {
@@ -36,111 +53,64 @@ token_to_user() {
     grep -i "|${token}|" "$TOKEN_DB" 2>/dev/null | cut -d'|' -f1
 }
 
-# Detecta sesiones Dropbear cuyo login es un HWID (32 hex)
-get_hwid_sessions() {
+# Obtiene todas las sesiones Dropbear activas de manera unificada y robusta
+get_all_sessions() {
     local active_pids
     active_pids=$(ps aux | awk '/dropbear/ && !/grep/' | awk '{print $2}')
     [ -z "$active_pids" ] && return
 
     while read -r pid; do
         [ -z "$pid" ] && continue
-
-        hwid=$(grep "dropbear\[${pid}\].*Password auth succeeded" "$AUTH_LOG" 2>/dev/null \
-               | tail -1 \
-               | grep -oE "for '[a-f0-9]{32}'" \
-               | grep -oE "[a-f0-9]{32}")
-        [ -z "$hwid" ] && continue
-
         kill -0 "$pid" 2>/dev/null || continue
 
-        username=$(hwid_to_user "$hwid")
-        [ -z "$username" ] && username="[$hwid]"
+        local username=""
+        local type="HWID-WS"
+        local identifier="-"
 
-        elapsed=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ')
-
-        down=0; up=0
-        if [ -r "/proc/$pid/io" ]; then
-            down=$(awk '/^rchar:/{print $2}' /proc/$pid/io 2>/dev/null || echo 0)
-            up=$(awk   '/^wchar:/{print $2}' /proc/$pid/io 2>/dev/null || echo 0)
-        fi
-
-        echo "$username|HWID-WS|$pid|${elapsed:-0}|${down:-0}|${up:-0}|$hwid"
-
-    done <<< "$active_pids"
-}
-
-# Detecta sesiones Dropbear cuyo login es un usuario SSH normal (no HWID, no TOKEN)
-get_ssh_sessions() {
-    local active_pids
-    active_pids=$(ps aux | awk '/dropbear/ && !/grep/' | awk '{print $2}')
-    [ -z "$active_pids" ] && return
-
-    while read -r pid; do
-        [ -z "$pid" ] && continue
-
-        # Obtener el nombre de usuario autenticado en este PID
+        # 1. Intentar extraer el login del log de autenticación
         login=$(grep "dropbear\[${pid}\].*Password auth succeeded" "$AUTH_LOG" 2>/dev/null \
                 | tail -1 \
                 | grep -oE "for '[^']+'" \
                 | grep -oE "'[^']+'" \
                 | tr -d "'")
-        [ -z "$login" ] && continue
 
-        # Saltar si es HWID (32 hex exactos)
-        echo "$login" | grep -qE "^[a-f0-9]{32}$" && continue
-
-        # Saltar si es TOKEN (existe en token.db)
-        if [ -f "$TOKEN_DB" ] && grep -q "^[^|]*|${login}|" "$TOKEN_DB" 2>/dev/null; then
+        if [ -n "$login" ]; then
+            clean_login=$(normalize_hwid "$login")
+            
+            # Verificar si es HWID (por longitud o formato hexadecimal)
+            if echo "$clean_login" | grep -qE "^[a-f0-9]{32,}$"; then
+                username=$(hwid_to_user "$clean_login")
+                [ -z "$username" ] && username="$login"
+                type="HWID-WS"
+                identifier="$clean_login"
+            # Verificar si existe directamente en hwid.db como texto/nombre
+            else
+                possible_hwid_user=$(hwid_to_user "$login")
+                if [ -n "$possible_hwid_user" ]; then
+                    username="$possible_hwid_user"
+                    type="HWID-WS"
+                    identifier="$login"
+                # Verificar si es TOKEN
+                elif [ -f "$TOKEN_DB" ] && grep -q "^[^|]*|${login}|" "$TOKEN_DB" 2>/dev/null; then
+                    username=$(token_to_user "$login")
+                    type="TOKEN"
+                    identifier="$login"
+                # Es usuario SSH tradicional
+                else
+                    if grep -q "^${login}" "$USUARIOS_DB" 2>/dev/null; then
+                        username="$login"
+                    else
+                        username="$login"
+                    fi
+                    type="SSH"
+                fi
+            fi
+        else
             continue
         fi
 
-        # Verificar que el proceso sigue activo
-        kill -0 "$pid" 2>/dev/null || continue
-
-        # Verificar que existe en usuarios.db
-        grep -q "^${login} " "$USUARIOS_DB" 2>/dev/null || continue
-
-        elapsed=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ')
-
-        down=0; up=0
-        if [ -r "/proc/$pid/io" ]; then
-            down=$(awk '/^rchar:/{print $2}' /proc/$pid/io 2>/dev/null || echo 0)
-            up=$(awk   '/^wchar:/{print $2}' /proc/$pid/io 2>/dev/null || echo 0)
-        fi
-
-        echo "$login|SSH|$pid|${elapsed:-0}|${down:-0}|${up:-0}|-"
-
-    done <<< "$active_pids"
-}
-
-# Detecta sesiones Dropbear cuyo login es un TOKEN
-get_token_sessions() {
-    [ ! -f "$TOKEN_DB" ] && return
-    [ ! -s "$TOKEN_DB" ] && return
-
-    local active_pids
-    active_pids=$(ps aux | awk '/dropbear/ && !/grep/' | awk '{print $2}')
-    [ -z "$active_pids" ] && return
-
-    while read -r pid; do
-        [ -z "$pid" ] && continue
-
-        login=$(grep "dropbear\[${pid}\].*Password auth succeeded" "$AUTH_LOG" 2>/dev/null \
-                | tail -1 \
-                | grep -oE "for '[^']+'" \
-                | grep -oE "'[^']+'" \
-                | tr -d "'")
-        [ -z "$login" ] && continue
-
-        # Saltar si es HWID
-        echo "$login" | grep -qE "^[a-f0-9]{32}$" && continue
-
-        # Verificar que existe en token.db como identificador
-        username=$(token_to_user "$login")
         [ -z "$username" ] && continue
 
-        kill -0 "$pid" 2>/dev/null || continue
-
         elapsed=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ')
 
         down=0; up=0
@@ -149,7 +119,7 @@ get_token_sessions() {
             up=$(awk   '/^wchar:/{print $2}' /proc/$pid/io 2>/dev/null || echo 0)
         fi
 
-        echo "$username|TOKEN|$pid|${elapsed:-0}|${down:-0}|${up:-0}|$login"
+        echo "$username|$type|$pid|${elapsed:-0}|${down:-0}|${up:-0}|$identifier"
 
     done <<< "$active_pids"
 }
@@ -182,11 +152,7 @@ while true; do
     total_hwid=$(grep -c "|" "$HWID_DB" 2>/dev/null || echo 0)
     total_token=$(grep -c "|" "$TOKEN_DB" 2>/dev/null || echo 0)
 
-    mapfile -t hwid_sessions  < <(get_hwid_sessions)
-    mapfile -t ssh_sessions   < <(get_ssh_sessions)
-    mapfile -t token_sessions < <(get_token_sessions)
-
-    all_sessions=("${hwid_sessions[@]}" "${ssh_sessions[@]}" "${token_sessions[@]}")
+    mapfile -t all_sessions < <(get_all_sessions)
     online=${#all_sessions[@]}
 
     ws_conns=$(get_wsepro_conn_count)
@@ -210,7 +176,7 @@ while true; do
             IFS='|' read -r username type pid elapsed down up identifier <<< "$entry"
             [ -z "$username" ] && continue
 
-            if [ "$type" = "HWID-WS" ]; then
+            if [ "$type" = "HWID-WS" ] || [ "$type" = "TOKEN" ]; then
                 conn=$ws_conns
                 [ "$conn" -eq 0 ] && conn=1
             else
