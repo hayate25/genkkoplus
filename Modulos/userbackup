@@ -1,4 +1,3 @@
-
 #!/bin/bash
 # userbackup - Sistema de backup automatico SSHPlus
 # Formato .sshgenkko - Compatible con SSH/HWID/TOKEN
@@ -233,8 +232,21 @@ EOM
     echo "--${BOUNDARY}--" >> "$TEMP_EMAIL"
     
     if command -v curl &> /dev/null; then
+        # NUEVO: elegir protocolo segun el puerto.
+        # 465 = SSL/TLS implicito desde el inicio de la conexion (smtps://)
+        # 587/25/otros = conexion en texto plano que sube a TLS via STARTTLS (smtp:// + --ssl-reqd)
+        # Usar smtps:// en el puerto 587 provoca justamente el error:
+        #   curl: (35) error:1408F10B:SSL routines:ssl3_get_record:wrong version number
+        local SMTP_PORT_ACTUAL="${SMTP_PORT:-465}"
+        local SMTP_URL
+        if [ "$SMTP_PORT_ACTUAL" == "465" ]; then
+            SMTP_URL="smtps://${SMTP_SERVER}:${SMTP_PORT_ACTUAL}"
+        else
+            SMTP_URL="smtp://${SMTP_SERVER}:${SMTP_PORT_ACTUAL}"
+        fi
+
         curl --silent --show-error \
-            --url "smtps://${SMTP_SERVER}:${SMTP_PORT:-465}" \
+            --url "${SMTP_URL}" \
             --ssl-reqd \
             --mail-from "${SMTP_USER}" \
             --mail-rcpt "${SMTP_TO}" \
