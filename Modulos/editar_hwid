@@ -44,13 +44,13 @@ fi
 echo ""
 echo "  USUARIOS HWID:"
 echo "  ----------------------------------------"
-echo "  ID | NOMBRE | HWID | EXPIRA"
-echo "  ---|--------|------|-------"
+echo "  ID | NOMBRE | HWID"
+echo "  ---|--------|------"
 
 i=1
 while IFS='|' read -r nombre hwid exp; do
     [[ -z "$nombre" ]] && continue
-    printf "  %-3s| %-7s| %-33s| %s\n" "$i" "$nombre" "$hwid" "$exp"
+    printf "  [%-3s]| %-7s| %-33s\n" "$i" "$nombre" "$hwid"
     i=$((i+1))
 done < "$DB_HWID"
 
