@@ -1485,6 +1485,7 @@ fun_conexao() {
 -12- • VOLVER AL MENU Inicial 
 -13- • SLOWDNS JoaquinH2
 -14- • Badvpn
+-15- • BHTTP
 -00- • SALIR "
 		echo ""
 		echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
