@@ -118,7 +118,7 @@ MODULOS=(
     "remover_silencioso" "senharoot" "slow_dns" "slowdns.sh" "speedtest"
     "ssh_manager" "sshmonitor" "swapmemory" "token_manager" "trojan-go"
     "uexpired" "userbackup" "v2ray" "v2raymanager" "verifatt"
-    "verifbot" "sshplus_auto_backup" "open.py" "proxy.py" "wsproxy.py" "tools" "velocidad.sh" "fai2ban.sh" "BHTTP"
+    "verifbot" "sshplus_auto_backup" "open.py" "proxy.py" "wsproxy.py" "tools" "velocidad.sh" "fai2ban.sh" "BHTTP" "hcr-server"
 )
 
 TOTAL=${#MODULOS[@]}
