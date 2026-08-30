@@ -1537,6 +1537,9 @@ fun_conexao() {
 			;;
   14| 14) /bin/badvpn
      ;;
+
+  15| 15) /bin/BHTTP
+     ;;
 		0 | 00)
 			echo -e "SALIENDO..."
 			sleep 2
