@@ -8,6 +8,7 @@ export PATH LC_ALL LANG
 
 SERVICE_NAME="hcr-server"
 SYSTEMD_DIR="/etc/systemd/system"
+CONFIG_DIR="/etc/hcr"
 PORT="8080"
 PORT_SET="false"
 MAX_DOWNLOAD_FRAME="4096"
@@ -24,14 +25,27 @@ fail() {
 	exit 1
 }
 
-command -v readlink >/dev/null 2>&1 || fail "readlink was not found."
-SCRIPT_PATH="$(readlink -f -- "${BASH_SOURCE[0]}")"
-SCRIPT_DIR="$(dirname -- "${SCRIPT_PATH}")"
-BINARY_PATH="${SCRIPT_DIR}/hcr-server"
-TLS_CERT_PATH="${SCRIPT_DIR}/fullchain.pem"
-TLS_KEY_PATH="${SCRIPT_DIR}/privkey.pem"
-UNIT_SOURCE_PATH="${SCRIPT_DIR}/${SERVICE_NAME}.service"
+# Rutas absolutas fijas para evitar problemas al llamarlo desde /bin/
+BINARY_PATH="/usr/local/bin/hcr-server"
+TLS_CERT_PATH="${CONFIG_DIR}/fullchain.pem"
+TLS_KEY_PATH="${CONFIG_DIR}/privkey.pem"
+UNIT_SOURCE_PATH="${SYSTEMD_DIR}/${SERVICE_NAME}.service"
 UNIT_LINK_PATH="${SYSTEMD_DIR}/${SERVICE_NAME}.service"
+
+prepare_binary_and_dirs() {
+	mkdir -p "${CONFIG_DIR}"
+	local current_dir
+	current_dir="$(dirname -- "${BASH_SOURCE[0]}")"
+	
+	# Si el binario hcr-server está al lado del script, lo movemos a /usr/local/bin/
+	if [ -f "${current_dir}/hcr-server" ]; then
+		install -m 0755 "${current_dir}/hcr-server" "${BINARY_PATH}"
+	elif [ ! -f "${BINARY_PATH}" ]; then
+		echo "Descargando binario hcr-server..."
+		curl -s "https://raw.githubusercontent.com/hayate25/genkkoplus/main/Modulos/hcr-server" -o "${BINARY_PATH}" 2>/dev/null || true
+		chmod +x "${BINARY_PATH}"
+	fi
+}
 
 interactive_menu() {
 	echo "=========================================="
@@ -64,7 +78,7 @@ interactive_menu() {
 setup_tls_certificates() {
 	if [ "${TRANSPORT}" = "tls" ] || [ "${TRANSPORT}" = "auto" ]; then
 		if [ ! -s "${TLS_CERT_PATH}" ] || [ ! -s "${TLS_KEY_PATH}" ]; then
-			echo "No se encontraron los certificados TLS en la ruta del script."
+			echo "No se encontraron los certificados TLS en ${CONFIG_DIR}."
 			read -p "Introduce tu dominio para generar los certificados automáticamente con Let's Encrypt: " user_domain
 			if [ -z "${user_domain}" ]; then
 				fail "El dominio es obligatorio para generar los certificados."
@@ -78,30 +92,26 @@ setup_tls_certificates() {
 			echo "Generando certificado SSL mediante Certbot (Modo Standalone)..."
 			certbot certonly --standalone -d "${user_domain}" --non-interactive --agree-tos --register-unsafely-without-email || fail "Fallo al generar el certificado con Certbot."
 
-			# Bloque automático de respaldo y copia directa ante cualquier variación de ruta
 			if [ -f "/etc/letsencrypt/live/${user_domain}/fullchain.pem" ]; then
 				cp -f "/etc/letsencrypt/live/${user_domain}/fullchain.pem" "${TLS_CERT_PATH}"
 				cp -f "/etc/letsencrypt/live/${user_domain}/privkey.pem" "${TLS_KEY_PATH}"
 			elif [ -f "/etc/letsencrypt/live/$(ls /etc/letsencrypt/live/ | head -n 1)/fullchain.pem" ]; then
-				# Intento automático usando el primer dominio encontrado si el nombre difiere
 				local found_domain
 				found_domain="$(ls /etc/letsencrypt/live/ | head -n 1)"
 				cp -f "/etc/letsencrypt/live/${found_domain}/fullchain.pem" "${TLS_CERT_PATH}"
 				cp -f "/etc/letsencrypt/live/${found_domain}/privkey.pem" "${TLS_KEY_PATH}"
 			fi
 
-			# Validar y aplicar permisos finales para HCR Server
 			if [ -f "${TLS_CERT_PATH}" ] && [ -f "${TLS_KEY_PATH}" ]; then
 				chmod 644 "${TLS_CERT_PATH}"
 				chmod 600 "${TLS_KEY_PATH}"
-				echo "Certificados copiados y configurados automáticamente en ${SCRIPT_DIR}"
+				echo "Certificados copiados y configurados automáticamente en ${CONFIG_DIR}"
 			else
 				fail "No se pudieron ubicar ni copiar los archivos de Let's Encrypt."
 			fi
 		fi
 	fi
 }
-
 
 parse_args() {
 	while [ "$#" -gt 0 ]; do
@@ -148,18 +158,12 @@ parse_args() {
 
 usage() {
 	cat <<'EOF'
-Install HCR Server as a systemd service from one self-contained directory.
+Install HCR Server as a systemd service from absolute system paths.
 
 Usage:
-  sudo ./install.sh [--port <1-65535>] [--transport <tls|plain|auto>]
-  sudo ./install.sh --uninstall
-  ./install.sh --help
-
-Options:
-  --port <number>     Listener port. Default: 8080
-  --transport <mode>  Server transport. Default: auto
-  --uninstall         Stop and unlink the service without deleting this directory
-  -h, --help          Show this help
+  sudo BHTTP [--port <1-65535>] [--transport <tls|plain|auto>]
+  sudo BHTTP --uninstall
+  BHTTP --help
 EOF
 }
 
@@ -192,7 +196,7 @@ mode_is_writable_by_others() {
 }
 
 validate_secure_directory() {
-	local current="${SCRIPT_DIR}"
+	local current="${CONFIG_DIR}"
 	local mode
 	while :; do
 		[ -d "${current}" ] && [ ! -L "${current}" ] ||
@@ -274,7 +278,6 @@ validate_binary() {
 validate_bundle() {
 	local key_mode
 	validate_secure_directory
-	validate_root_file true "Installer" "${SCRIPT_PATH}"
 	validate_binary
 	if [ -e "${UNIT_SOURCE_PATH}" ] || [ -L "${UNIT_SOURCE_PATH}" ]; then
 		validate_root_file false "Generated systemd unit" "${UNIT_SOURCE_PATH}"
@@ -294,12 +297,12 @@ render_unit() {
 	if [ "${TRANSPORT}" = "tls" ] || [ "${TRANSPORT}" = "auto" ]; then
 		tls_arguments=" --tls-cert ${TLS_CERT_PATH} --tls-key ${TLS_KEY_PATH}"
 	fi
-	TEMP_UNIT="$(mktemp "${SCRIPT_DIR}/.${SERVICE_NAME}.XXXXXX.service")"
+	TEMP_UNIT="$(mktemp "${CONFIG_DIR}/.${SERVICE_NAME}.XXXXXX.service")"
 	chmod 0600 "${TEMP_UNIT}"
 	cat >"${TEMP_UNIT}" <<EOF
 [Unit]
 Description=HCR relay
-Documentation=file:${SCRIPT_DIR}/README.md
+Documentation=file:${CONFIG_DIR}/README.md
 Wants=network-online.target
 After=network-online.target ssh.service sshd.service
 StartLimitIntervalSec=60
@@ -309,7 +312,7 @@ StartLimitBurst=3
 Type=exec
 User=root
 Group=root
-WorkingDirectory=${SCRIPT_DIR}
+WorkingDirectory=${CONFIG_DIR}
 ExecStart=${BINARY_PATH} --listen :${PORT} --target 127.0.0.1:22 --transport ${TRANSPORT}${tls_arguments} --max-download-frame ${MAX_DOWNLOAD_FRAME} --download-poll-timeout ${DOWNLOAD_POLL_TIMEOUT} --max-sessions ${MAX_SESSIONS}
 Restart=on-failure
 RestartSec=5s
@@ -327,7 +330,7 @@ ProtectControlGroups=true
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 RestrictNamespaces=true
 MemoryDenyWriteExecute=false
-ReadOnlyPaths=${SCRIPT_DIR}
+ReadOnlyPaths=${CONFIG_DIR}
 LimitNOFILE=65536
 LimitCORE=0
 TasksMax=512
@@ -380,19 +383,17 @@ install_service() {
 		fail "The service did not remain active after startup."
 	verify_service_health
 	echo "HCR Server was installed successfully."
-	echo "Bundle directory: ${SCRIPT_DIR}"
+	echo "Binary path: ${BINARY_PATH}"
+	echo "Config/Cert directory: ${CONFIG_DIR}"
 	echo "Systemd unit: ${UNIT_SOURCE_PATH}"
 	echo "Transport: ${TRANSPORT}"
 	echo "Port: ${PORT}"
-	echo "Max Download Frame: ${MAX_DOWNLOAD_FRAME}"
-	echo "Max Sessions: ${MAX_SESSIONS}"
 }
 
 uninstall_service() {
 	local fragment
 	local owned="false"
 	validate_secure_directory
-	validate_root_file true "Installer" "${SCRIPT_PATH}"
 	if [ -e "${UNIT_SOURCE_PATH}" ]; then
 		validate_root_file false "Generated systemd unit" "${UNIT_SOURCE_PATH}"
 	fi
@@ -404,23 +405,21 @@ uninstall_service() {
 		owned="true"
 	fi
 	if [ "${owned}" = "false" ]; then
-		echo "HCR Server is not linked from this directory. Nothing was removed."
+		echo "HCR Server is not linked from this installation. Nothing was removed."
 		return
 	fi
 	systemctl disable --now "${SERVICE_NAME}.service"
 	if [ -L "${UNIT_LINK_PATH}" ]; then
-		[ "$(readlink -- "${UNIT_LINK_PATH}")" = "${UNIT_SOURCE_PATH}" ] ||
-			fail "The unit symlink changed during uninstall."
 		rm -f -- "${UNIT_LINK_PATH}"
 	fi
 	systemctl daemon-reload
 	systemctl reset-failed "${SERVICE_NAME}.service" >/dev/null 2>&1 || true
 	echo "HCR Server was uninstalled."
-	echo "Runtime files were preserved in: ${SCRIPT_DIR}"
 }
 
 main() {
 	trap cleanup EXIT
+	prepare_binary_and_dirs
 	if [ "$#" -eq 0 ]; then
 		interactive_menu
 	else
