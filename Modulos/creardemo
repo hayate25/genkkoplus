@@ -120,8 +120,17 @@ case "$modo" in
         # Recien aqui se pide la duracion
         pedir_duracion
 
-        # Crear usuario con fecha de expiracion
-        useradd -e "$fecha_exp_dia" -M -s /bin/false "$nombre" 2>/dev/null
+        # Crear usuario SIN expiracion de sistema (-e). El vencimiento real
+        # por minutos lo controla demo_cleaner via temp_users.db (timestamps
+        # en segundos). Si se usara "useradd -e" con fecha de HOY, shadow/PAM
+        # marca la cuenta como expirada desde el instante de creacion
+        # (chage/shadow solo tienen granularidad de dia), bloqueando el login
+        # de inmediato aunque falten minutos. Ademas, fijar -e rompe la
+        # deteccion de "renovado" de demo_cleaner (que compara chage -l contra
+        # temp_users.db): al quedar en "never", esa deteccion se activa
+        # correctamente solo si otro modulo carga dias reales despues
+        # (conversion a usuario normal).
+        useradd -M -s /bin/false "$nombre" 2>/dev/null
         if [ $? -ne 0 ]; then
             echo "ERROR: No se pudo crear el usuario en el sistema"
             exit 1
@@ -165,10 +174,17 @@ case "$modo" in
         # Recien aqui se pide la duracion
         pedir_duracion
 
+        # fecha_exp_dia se guarda igual en hwid.db: sirve solo como registro
+        # y para la deteccion de "renovado" de demo_cleaner (comparacion
+        # interna contra temp_users.db), no afecta el login del sistema.
         echo "$nombre|$hwid|$fecha_exp_dia" >> "/etc/SSHPlus/hwid.db"
 
         pass_crypt=$(perl -e 'print crypt($ARGV[0], "password")' "$hwid")
-        useradd -e "$fecha_exp_dia" -M -s /bin/false -p "$pass_crypt" "$hwid" 2>/dev/null
+
+        # Igual que en SSH: sin "-e" para no bloquear el login de inmediato
+        # por granularidad de dia. demo_cleaner controla el borrado real
+        # por minutos via temp_users.db.
+        useradd -M -s /bin/false -p "$pass_crypt" "$hwid" 2>/dev/null
 
         echo "$nombre|HWID|$fecha_exp_hora" >> "$TEMP_DB"
 
