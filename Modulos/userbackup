@@ -21,7 +21,11 @@ crear_backup_sshgenkko() {
     
     mkdir -p "$TEMP_DIR"
     
-    echo "Creando backup..."
+    # FIX: este mensaje se mandaba a stdout y contaminaba $resultado
+    # cuando se captura con "resultado=$(crear_backup_sshgenkko)" en el
+    # cron de backup automatico, haciendo que "$backup_file" quedara con
+    # 2 lineas y el posterior "[ -f "$backup_file" ]" fallara siempre.
+    echo "Creando backup..." >&2
     
     # Crear archivo de manifiesto
     echo "# SSHPLUS BACKUP MANIFEST" > "$TEMP_DIR/MANIFEST"
@@ -232,7 +236,7 @@ EOM
     echo "--${BOUNDARY}--" >> "$TEMP_EMAIL"
     
     if command -v curl &> /dev/null; then
-        # NUEVO: elegir protocolo segun el puerto.
+        # Elegir protocolo segun el puerto.
         # 465 = SSL/TLS implicito desde el inicio de la conexion (smtps://)
         # 587/25/otros = conexion en texto plano que sube a TLS via STARTTLS (smtp:// + --ssl-reqd)
         # Usar smtps:// en el puerto 587 provoca justamente el error:
@@ -278,16 +282,54 @@ configurar_smtp() {
     echo "         CONFIGURACION SMTP"
     echo "=============================================="
     echo ""
-    echo "Ejemplos:"
-    echo "  Gmail:   smtp.gmail.com / 465"
-    echo "  Outlook: smtp-mail.outlook.com / 587"
-    echo "  Yahoo:   smtp.mail.yahoo.com / 465"
+    echo "Seleccione su proveedor de correo:"
+    echo "  [1] Gmail          (smtp.gmail.com / 465)"
+    echo "  [2] Yahoo          (smtp.mail.yahoo.com / 465)"
+    echo "  [3] Outlook/Hotmail (smtp-mail.outlook.com / 587)"
+    echo "  [4] iCloud         (smtp.mail.me.com / 587)"
+    echo "  [5] Zoho           (smtp.zoho.com / 465)"
+    echo "  [6] Otro (ingresar manualmente)"
     echo ""
-    echo -n "Servidor SMTP: "
-    read SMTP_SERVER
-    echo -n "Puerto (465/587): "
-    read SMTP_PORT
-    [[ -z "$SMTP_PORT" ]] && SMTP_PORT="465"
+    echo -n "Opcion: "
+    read proveedor
+
+    case "$proveedor" in
+        1)
+            SMTP_SERVER="smtp.gmail.com"
+            SMTP_PORT="465"
+            ;;
+        2)
+            SMTP_SERVER="smtp.mail.yahoo.com"
+            SMTP_PORT="465"
+            ;;
+        3)
+            SMTP_SERVER="smtp-mail.outlook.com"
+            SMTP_PORT="587"
+            ;;
+        4)
+            SMTP_SERVER="smtp.mail.me.com"
+            SMTP_PORT="587"
+            ;;
+        5)
+            SMTP_SERVER="smtp.zoho.com"
+            SMTP_PORT="465"
+            ;;
+        6)
+            echo -n "Servidor SMTP: "
+            read SMTP_SERVER
+            echo -n "Puerto (465/587): "
+            read SMTP_PORT
+            [[ -z "$SMTP_PORT" ]] && SMTP_PORT="465"
+            ;;
+        *)
+            echo "Opcion invalida"
+            return 1
+            ;;
+    esac
+
+    echo ""
+    echo "Servidor: $SMTP_SERVER | Puerto: $SMTP_PORT"
+    echo ""
     echo -n "Usuario/Email: "
     read SMTP_USER
     echo -n "Contrasena/App Password: "
@@ -377,7 +419,7 @@ if [ -f /etc/SSHPlus/backup_config.cfg ]; then
 fi
 BACKUP_DIR="/etc/SSHPlus/backups"
 
-resultado=$(/bin/userbackup --silent 2>&1)
+resultado=$(/bin/userbackup --silent 2>/dev/null)
 backup_file=$(echo "$resultado" | cut -d'|' -f1)
 
 if [ -n "$backup_file" ] && [ -f "$backup_file" ]; then
